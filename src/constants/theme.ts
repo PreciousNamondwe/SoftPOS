@@ -10,18 +10,35 @@ import { Platform } from 'react-native';
 export const Colors = {
   light: {
     text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
+    background: '#c2e2ee',
+    backgroundElement: '#f0f0f3',
     backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    textSecondary: '#62769c',
   },
   dark: {
     text: '#ffffff',
-    background: '#000000',
+    background: '#c2e2ee',
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
   },
+  tabBarStyle: {
+  position: "absolute",
+  bottom: 20,
+  left: 20,
+  right: 20,
+
+  height: 70,
+
+  borderRadius: 35,
+
+  backgroundColor: "rgba(255,255,255,0.15)",
+
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.25)",
+
+  overflow: "hidden",
+}
 } as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
