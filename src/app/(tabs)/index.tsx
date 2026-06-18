@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Text,
   View,
@@ -54,6 +54,10 @@ function ProgressArc({ percent = 78 }) {
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
 
+  // Custom Agent Config States
+  const [notificationCount, setNotificationCount] = useState<number>(3);
+  const [agentId, setAgentId] = useState<string>("AGT-9082");
+
   // Financial Metric Calculations
   const totalCollected = 39000;
   const targetGoal = 50000;
@@ -71,18 +75,49 @@ export default function DashboardScreen() {
           paddingBottom: 60,
         }}
       >
-        {/* 1. PROFESSIONAL WELCOME HEADER */}
+        {/* 1. TOP APP BAR BLOCK (PROFILE CIRCLE + SPAN AGENT ID & NOTIFICATION ICON) */}
         <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.greetingText}>Moni, Agent</Text>
-            <Text style={styles.dateSubtitle}>Monday, 15 June 2026</Text>
+          
+          {/* PROFILE COMPONENT GRID WITH ATTACHED AGENT ID STRIP */}
+          <View style={styles.profileMetaBoxRow}>
+            <TouchableOpacity 
+              style={styles.profileBadge}
+              activeOpacity={0.8}
+              onPress={() => console.log("Profile Tapped")}
+            >
+              <Ionicons name="person-circle" size={38} color="#FFFFFF" />
+            </TouchableOpacity>
+            
+            <View style={styles.idContextSpan}>
+              <Text style={styles.idLabelHint}>OFFICIAL ID</Text>
+              <Text style={styles.idNumberText}>{agentId}</Text>
+            </View>
           </View>
-          <View style={styles.profileBadge}>
-            <Ionicons name="person-circle" size={36} color="#FFFFFF" />
-          </View>
+
+          {/* RIGHT NOTIFICATION ACTION LAYER */}
+          <TouchableOpacity 
+            style={styles.notificationBadge}
+            activeOpacity={0.8}
+            onPress={() => console.log("Notifications Tapped")}
+          >
+            <Ionicons name="notifications" size={24} color="#FFFFFF" />
+            {notificationCount > 0 && (
+              <View style={styles.redIndicatorDot}>
+                <Text style={styles.notificationCounterText}>
+                  {notificationCount > 9 ? "9+" : notificationCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
-        {/* 2. LIVE SHIFT PAYOUT GLASS CARD */}
+        {/* 2. JUSTIFIED GREETING AND TIMESTAMP BLOCK */}
+        <View style={styles.justifiedGreetingArea}>
+          <Text style={styles.greetingText}>Moni, Agent</Text>
+          <Text style={styles.dateSubtitle}>Monday, 15 June 2026</Text>
+        </View>
+
+        {/* 3. LIVE SHIFT PAYOUT GLASS CARD */}
         <BlurView intensity={30} tint="light" style={styles.payoutCard}>
           <View style={styles.payoutTopMeta}>
             <View>
@@ -102,7 +137,7 @@ export default function DashboardScreen() {
           </View>
         </BlurView>
 
-        {/* 3. TARGET STATUS MATRIX CENTER */}
+        {/* 4. TARGET STATUS MATRIX CENTER */}
         <BlurView intensity={20} tint="light" style={styles.targetCard}>
           <Text style={styles.cardSectionLabel}>SHIFT MILESTONE BENCHMARK</Text>
           
@@ -120,14 +155,6 @@ export default function DashboardScreen() {
           </View>
         </BlurView>
 
-        {/* 4. PRIMARY ACCESSIBILITY ACTION TRIGGER */}
-        <TouchableOpacity activeOpacity={0.85} style={styles.actionHeroButton}>
-          <View style={styles.actionButtonLayoutAlignment}>
-            <Ionicons name="add-circle" size={22} color="#073474" />
-            <Text style={styles.actionHeroButtonText}>Launch New Collection</Text>
-          </View>
-        </TouchableOpacity>
-
       </ScrollView>
     </LinearGradient>
   );
@@ -142,7 +169,64 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginHorizontal: 20,
-    marginBottom: 24,
+    marginBottom: 28,
+  },
+  profileMetaBoxRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  profileBadge: {
+    padding: 2,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 100,
+  },
+  idContextSpan: {
+    justifyContent: "center",
+  },
+  idLabelHint: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "rgba(255,255,255,0.5)",
+    letterSpacing: 0.5,
+  },
+  idNumberText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    marginTop: 1,
+  },
+  notificationBadge: {
+    padding: 10,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 14,
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  redIndicatorDot: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    backgroundColor: "#FF3B30",
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: "#456da5",
+  },
+  notificationCounterText: {
+    color: "#FFFFFF",
+    fontSize: 9,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  justifiedGreetingArea: {
+    marginHorizontal: 18,
+    marginBottom: 12,
   },
   greetingText: {
     fontSize: 26,
@@ -155,11 +239,6 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.7)",
     marginTop: 2,
     fontWeight: "500",
-  },
-  profileBadge: {
-    padding: 4,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    borderRadius: 100,
   },
   payoutCard: {
     marginHorizontal: 16,
@@ -315,64 +394,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "900",
     letterSpacing: -0.2,
-  },
-  sectionTitle: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "800",
-    marginHorizontal: 18,
-    marginBottom: 14,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
-  gridContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: 12,
-    justifyContent: "flex-start",
-  },
-  hubMetricsGridItem: {
-    width: (SCREEN_WIDTH - 40) / 2,
-    marginHorizontal: 4,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    padding: 14,
-    marginBottom: 12,
-    overflow: "hidden",
-  },
-  hubHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 8,
-  },
-  colorIndicatorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  hubTitleText: {
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  hubYieldAmount: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontWeight: "800",
-    letterSpacing: -0.5,
-  },
-  hubFooterMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 10,
-  },
-  hubCountText: {
-    fontSize: 10,
-    color: "rgba(255,255,255,0.45)",
-    fontWeight: "600",
   },
 });

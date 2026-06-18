@@ -1,9 +1,8 @@
-import { Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { ThemeProvider, DarkTheme, DefaultTheme } from "expo-router";
-import { useColorScheme, View } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
+import { Feather, Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { DarkTheme, DefaultTheme, Tabs, ThemeProvider } from "expo-router";
+import { useColorScheme, View } from "react-native";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -58,15 +57,15 @@ export default function TabLayout() {
           options={{
             title: "Home",
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="grid-outline" size={size} color={color} />
+              <Feather name="home" size={size} color={color} />
             ),
           }}
         />
 
         <Tabs.Screen
-          name="collect"
+          name="collections"
           options={{
-            title: "Collect",
+            title: "Collections",
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="card-outline" size={size} color={color} />
             ),
@@ -74,19 +73,19 @@ export default function TabLayout() {
         />
 
         <Tabs.Screen
-          name="receipts"
+          name="scan"
           options={{
-            title: "Receipts",
+            title: "ScanQR",
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="receipt-outline" size={size} color={color} />
+              <Ionicons name="qr-code-outline" size={size} color={color} />
             ),
           }}
         />
 
         <Tabs.Screen
-          name="reports"
+          name="performance"
           options={{
-            title: "Reports",
+            title: "Performance",
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="bar-chart-outline" size={size} color={color} />
             ),
@@ -94,11 +93,11 @@ export default function TabLayout() {
         />
 
         <Tabs.Screen
-          name="profile"
+          name="settings"
           options={{
-            title: "Profile",
+            title: "Settings",
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="person-outline" size={size} color={color} />
+              <Ionicons name="settings-outline" size={size} color={color} />
             ),
           }}
         />

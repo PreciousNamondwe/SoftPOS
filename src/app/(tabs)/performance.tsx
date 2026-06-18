@@ -1,26 +1,29 @@
-import React from "react";
-import { View, Text, ScrollView, StyleSheet, Dimensions } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { LineChart, BarChart, PieChart } from "react-native-chart-kit";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+import { useState } from "react";
+import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { LineChart, PieChart } from "react-native-chart-kit";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CHART_WIDTH = SCREEN_WIDTH - 32;
 
+type FilterTimeframe = "week" | "month" | "year";
+
 export default function ReportsScreen() {
   const insets = useSafeAreaInsets();
+  
+  // Active Timeframe Filter State
+  const [timeframe, setTimeframe] = useState<FilterTimeframe>("week");
 
   // Agent Specific Hard Numbers
   const totalCollected = 39000;
   const targetGoal = 50000;
   const targetAccomplishmentRate = Math.round((totalCollected / targetGoal) * 100);
-  
-  // Commission calculation (e.g., 10% on collected volume)
   const agentPayoutAmount = totalCollected * 0.10; 
 
-  // Glassmorphism translucent chart parameters
+  // Translucent chart style definitions
   const chartConfig = {
     backgroundColor: "transparent",
     backgroundGradientFrom: "#073474",
@@ -38,33 +41,26 @@ export default function ReportsScreen() {
     },
   };
 
-  // 1. Line Data: Agent performance over the week against a constant target line
-  const weeklyPerformanceData = {
-    labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-    datasets: [
-      { 
-        data: [12000, 19000, 32000, 25000, 39000, 45000],
-        color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`, // Actual collections
-      }
-    ],
-  };
-
-  // 2. Bar Data: Target vs Actual Accomplishment across active Zones
-  const zoneTargetComparisonData = {
-    labels: ["Zone A", "Zone B", "Zone C", "Zone D"],
-    datasets: [{ data: [targetAccomplishmentRate, 85, 40, 95] }], // Percentage of target met
-  };
-
-  // 3. Pie Data: Accomplished target split visual representation
+  // Pie Chart Dataset Split Configuration
   const accomplishmentPieData = [
     { name: "Collected", population: totalCollected, color: "#FFFFFF", legendFontColor: "#FFFFFF", legendFontSize: 12 },
-    { name: "Remaining Target", population: targetGoal - totalCollected, color: "rgba(255, 255, 255, 0.3)", legendFontColor: "rgba(255, 255, 255, 0.7)", legendFontSize: 12 },
+    { name: "Remaining", population: targetGoal - totalCollected, color: "rgba(255, 255, 255, 0.3)", legendFontColor: "rgba(255, 255, 255, 0.7)", legendFontSize: 12 },
   ];
 
-  // 4. Bar Data: Payout volume weight contribution per tariff
-  const payoutByTariffData = {
-    labels: ["Stall", "Hawker", "Minibus"],
-    datasets: [{ data: [1500, 900, 2100] }], // MWK earned per branch loop
+  // Performance datasets based on chosen filtering node state
+  const performanceDatasets = {
+    week: {
+      labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+      datasets: [{ data: [12000, 19000, 32000, 25000, 39000, 45000] }],
+    },
+    month: {
+      labels: ["Wk 1", "Wk 2", "Wk 3", "Wk 4"],
+      datasets: [{ data: [95000, 120000, 145000, 139000] }],
+    },
+    year: {
+      labels: ["Q1", "Q2", "Q3", "Q4"],
+      datasets: [{ data: [410000, 520000, 490000, 610000] }],
+    },
   };
 
   return (
@@ -79,11 +75,11 @@ export default function ReportsScreen() {
           paddingBottom: 120,
         }}
       >
-        {/* HEADER */}
+        {/* HEADER SECTION */}
         <View style={styles.header}>
-          <Text style={styles.title}>My Accomplishments</Text>
+          <Text style={styles.title}>My Performance</Text>
           <Text style={styles.subtitle}>
-            Track your milestones, goals, and payouts
+            Track your milestones, goals, and payouts history
           </Text>
         </View>
 
@@ -105,7 +101,7 @@ export default function ReportsScreen() {
           </View>
         </BlurView>
 
-        {/* ===================== 1. PIE CHART (Target Accomplished Split) ===================== */}
+        {/* ===================== 1. PIE CHART CARD ===================== */}
         <BlurView intensity={20} tint="light" style={styles.card}>
           <View style={styles.cardHeaderRow}>
             <Ionicons name="ribbon-sharp" size={18} color="#fff" style={{ marginRight: 8 }} />
@@ -114,7 +110,7 @@ export default function ReportsScreen() {
           <PieChart
             data={accomplishmentPieData}
             width={CHART_WIDTH - 32}
-            height={140}
+            height={130}
             chartConfig={chartConfig}
             accessor={"population"}
             backgroundColor={"transparent"}
@@ -123,54 +119,44 @@ export default function ReportsScreen() {
           />
         </BlurView>
 
-        {/* ===================== 2. LINE CHART (Weekly Progress) ===================== */}
+        {/* ===================== 2. LINE CHART CARD + TIMEFRAME DROPDOWN ===================== */}
         <BlurView intensity={20} tint="light" style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <Ionicons name="trending-up-sharp" size={18} color="#fff" style={{ marginRight: 8 }} />
-            <Text style={styles.chartTitle}>My Weekly Yield History (MWK)</Text>
+          <View style={styles.cardHeaderRowBetween}>
+            <View style={styles.inlineHeaderTitleGroup}>
+              <Ionicons name="trending-up-sharp" size={18} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.chartTitle}>Yield History (MWK)</Text>
+            </View>
+
+            {/* SELECTION FILTER DROPDOWN SEGMENT BUTTONS */}
+            <View style={styles.filterDropdownContainer}>
+              {(["week", "month", "year"] as FilterTimeframe[]).map((item) => (
+                <TouchableOpacity
+                  key={item}
+                  onPress={() => setTimeframe(item)}
+                  style={[
+                    styles.filterPill,
+                    timeframe === item && styles.filterPillActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterPillText,
+                      timeframe === item && styles.filterPillTextActive,
+                    ]}
+                  >
+                    {item.toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
+
           <LineChart
-            data={weeklyPerformanceData}
+            data={performanceDatasets[timeframe]}
             width={CHART_WIDTH - 32}
             height={180}
             chartConfig={chartConfig}
             bezier
-            withInnerLines={false}
-            style={styles.chartNativeStyle}
-          />
-        </BlurView>
-
-        {/* ===================== 3. BAR CHART (Zone Accomplishments) ===================== */}
-        <BlurView intensity={20} tint="light" style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <Ionicons name="checkmark-done-circle" size={18} color="#fff" style={{ marginRight: 8 }} />
-            <Text style={styles.chartTitle}>Target Achievement By Zone</Text>
-          </View>
-          <BarChart
-            data={zoneTargetComparisonData}
-            width={CHART_WIDTH - 32}
-            height={200}
-            yAxisLabel=""
-            yAxisSuffix="%"
-            chartConfig={chartConfig}
-            withInnerLines={false}
-            style={styles.chartNativeStyle}
-          />
-        </BlurView>
-
-        {/* ===================== 4. BAR CHART (Payout Share By Tariff) ===================== */}
-        <BlurView intensity={20} tint="light" style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <Ionicons name="gift-sharp" size={18} color="#fff" style={{ marginRight: 8 }} />
-            <Text style={styles.chartTitle}>Payout Reward Weight By Fee Type</Text>
-          </View>
-          <BarChart
-            data={payoutByTariffData}
-            width={CHART_WIDTH - 32}
-            height={200}
-            yAxisLabel="K"
-            yAxisSuffix=""
-            chartConfig={chartConfig}
             withInnerLines={false}
             style={styles.chartNativeStyle}
           />
@@ -210,7 +196,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   payoutHighlightCard: {
-    backgroundColor: "rgba(255,255,255,0.95)", // Pops distinctly from the layout mix
+    backgroundColor: "rgba(255,255,255,0.95)",
     borderColor: "#FFFFFF",
   },
   payoutLabel: {
@@ -252,10 +238,42 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
+  cardHeaderRowBetween: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  inlineHeaderTitleGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   chartTitle: {
     fontSize: 13,
     fontWeight: "700",
     color: "#fff",
+  },
+  filterDropdownContainer: {
+    flexDirection: "row",
+    backgroundColor: "rgba(0,0,0,0.2)",
+    padding: 3,
+    borderRadius: 10,
+  },
+  filterPill: {
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  filterPillActive: {
+    backgroundColor: "#FFFFFF",
+  },
+  filterPillText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "rgba(255,255,255,0.6)",
+  },
+  filterPillTextActive: {
+    color: "#073474",
   },
   chartNativeStyle: {
     marginLeft: -16,
