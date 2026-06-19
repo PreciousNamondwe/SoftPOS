@@ -1,0 +1,37 @@
+// /workspaces/SoftPOS/prisma/sqlite/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  // Keep this blank! No url line allowed here in Prisma 7
+}
+
+model Agent {
+  id        String   @id @default(uuid())
+  agentId   String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  vendors   Vendor[]
+}
+
+model Vendor {
+  id              String   @id @default(uuid())
+  businessName    String
+  tradingName     String?
+  tpin            String   @unique
+  nationalId      String   @unique
+  mobileNumber    String
+  email           String?
+  physicalAddress String
+  district        String
+  businessType    String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  agentId         String
+  agent           Agent    @relation(fields: [agentId], references: [agentId])
+}

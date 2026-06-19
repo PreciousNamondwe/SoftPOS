@@ -1,9 +1,11 @@
+import styles from "@/styles/collectionStyle";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -15,6 +17,12 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+// 1. IMPORT NATIVE EXPO SQLITE ENGINE
+import * as SQLite from "expo-sqlite";
+
+// Open or initialize the target database file on device storage instantly
+const db = SQLite.openDatabaseSync("lomis.db");
 
 // Strict Type Declaration Mapping for TypeScript Safety
 interface BusinessType {
@@ -38,17 +46,44 @@ const BUSINESS_TYPES: BusinessType[] = [
   { id: "6", label: "Tailoring / Artisanal Workshop", fee: 750 },
 ];
 
+const MOCK_AGENT_ID = "AGENT-TEMP-001";
+
 export default function CollectScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter(); 
 
-  const [modalVisible, setModalVisible] = useState<boolean>(false);
+  const [onboardModalVisible, setOnboardModalVisible] = useState<boolean>(false);
+  const [createQrModalVisible, setCreateQrModalVisible] = useState<boolean>(false);
   
-  // Day 1 Onboarding Form States
+  // Shared Form Input Context States
   const [nationalId, setNationalId] = useState<string>("");
   const [vendorName, setVendorName] = useState<string>("");
+  const [phoneNumber, setPhoneNumber] = useState<string>(""); 
   const [selectedBusiness, setSelectedBusiness] = useState<BusinessType | null>(null);
   const [showDropdown, setShowDropdown] = useState<boolean>(false);
+
+  // 2. RUN AUTO-MIGRATION SCHEMAS ON SCREEN MOUNT
+  useEffect(() => {
+    try {
+      db.execSync(`
+        CREATE TABLE IF NOT EXISTS Vendor (
+          id TEXT PRIMARY KEY NOT NULL,
+          businessName TEXT NOT NULL,
+          tradingName TEXT,
+          tpin TEXT UNIQUE NOT NULL,
+          nationalId TEXT UNIQUE NOT NULL,
+          mobileNumber TEXT NOT NULL,
+          physicalAddress TEXT,
+          district TEXT,
+          businessType TEXT,
+          agentId TEXT NOT NULL
+        );
+      `);
+      console.log("SQLite Engine tables verified successfully.");
+    } catch (error) {
+      console.error("Failed to run native SQLite initializations:", error);
+    }
+  }, []);
 
   const collections: CollectionItem[] = [
     { name: "Mary Chirwa", amount: "K500", location: "Lunzu Market" },
@@ -56,26 +91,69 @@ export default function CollectScreen() {
     { name: "Peter Mbewe", amount: "K1000", location: "City Center" },
   ];
 
+  // 3. PERSIST RECORD USING EXPO-SQLITE RUNTIME
   const handleOnboardAndCollect = () => {
     // Structural Field Validation Rules Checklist
-    if (!nationalId.trim() || !vendorName.trim() || !selectedBusiness) return; 
+    if (!nationalId.trim() || !vendorName.trim() || !phoneNumber.trim() || !selectedBusiness) return; 
 
-    console.log("DAY 1 PAYLOAD MINTED:", {
+    const cleanNationalId = nationalId.toUpperCase().trim();
+    const cleanVendorName = vendorName.trim();
+    const cleanPhone = phoneNumber.trim();
+    const runtimeUniqueId = Math.random().toString(36).substring(2, 15);
+
+    try {
+      // Execute the record insertion using parameterized inputs to prevent SQL errors
+      db.runSync(
+        `INSERT INTO Vendor (id, businessName, tradingName, tpin, nationalId, mobileNumber, physicalAddress, district, businessType, agentId)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        [
+          runtimeUniqueId,
+          cleanVendorName,
+          cleanVendorName,
+          `TPIN-${cleanNationalId}`,
+          cleanNationalId,
+          cleanPhone,
+          "Field Offline Capture",
+          "Blantyre",
+          selectedBusiness.label,
+          MOCK_AGENT_ID,
+        ]
+      );
+
+      console.log("VENDOR DATA SUCCESSFULLY SAVED TO SQLITE INTERNALLY");
+      Alert.alert("Success", `${cleanVendorName} has been saved to local memory successfully.`);
+
+      // Reset Form Input Context States
+      setNationalId("");
+      setVendorName("");
+      setPhoneNumber("");
+      setSelectedBusiness(null);
+      setShowDropdown(false);
+      setOnboardModalVisible(false);
+
+      // Route over to real-time receipts summary tracking terminal ledger
+      router.push("/scan");
+    } catch (error: any) {
+      console.error("SQLite storage operational crash:", error);
+      Alert.alert("Storage Error", error.message.includes("UNIQUE") 
+        ? "A vendor with this National ID already exists locally." 
+        : "Failed to write record to internal device storage."
+      );
+    }
+  };
+
+  const handleCreateQrOnly = () => {
+    if (!nationalId.trim() || !vendorName.trim()) return;
+
+    console.log("QR GENERATION DATA MINED:", {
       nationalId: nationalId.toUpperCase().trim(),
       vendorName: vendorName.trim(),
-      businessType: selectedBusiness.label,
-      feeLogged: selectedBusiness.fee,
-      paymentMethod: "CASH_IMMEDIATE"
     });
 
-    // Reset Form Input Context States
     setNationalId("");
     setVendorName("");
-    setSelectedBusiness(null);
-    setShowDropdown(false);
-    setModalVisible(false);
+    setCreateQrModalVisible(false);
 
-    // Route over to real-time receipts summary tracking terminal ledger
     router.push("/scan");
   };
 
@@ -105,20 +183,20 @@ export default function CollectScreen() {
           <TouchableOpacity
             activeOpacity={0.85}
             style={styles.actionButtonSplit}
-            onPress={() => setModalVisible(true)}
+            onPress={() => setOnboardModalVisible(true)}
           >
             <Ionicons name="person-add-outline" size={20} color="#073474" />
             <Text style={styles.actionText}>Onboard Vendor</Text>
           </TouchableOpacity>
 
-          {/* 2. LIVE FIELD SCAN BUTTON */}
+          {/* 2. CREATE QR BUTTON */}
           <TouchableOpacity
             activeOpacity={0.85}
             style={[styles.actionButtonSplit, styles.actionButtonScanVariant]}
-            onPress={() => router.push("/scan")}
+            onPress={() => setCreateQrModalVisible(true)}
           >
-            <Ionicons name="scan-circle-outline" size={24} color="#FFFFFF" />
-            <Text style={[styles.actionText, styles.actionTextScanVariant]}>Scan QR</Text>
+            <Ionicons name="qr-code-outline" size={22} color="#FFFFFF" />
+            <Text style={[styles.actionText, styles.actionTextScanVariant]}>Create QR</Text>
           </TouchableOpacity>
         </View>
 
@@ -149,12 +227,12 @@ export default function CollectScreen() {
 
       {/* ================= MODAL ONBOARDING SHEET ================= */}
       <Modal
-        visible={modalVisible}
+        visible={onboardModalVisible}
         animationType="fade"
         transparent
         onRequestClose={() => {
           setShowDropdown(false);
-          setModalVisible(false);
+          setOnboardModalVisible(false);
         }}
       >
         <KeyboardAvoidingView
@@ -169,7 +247,7 @@ export default function CollectScreen() {
               <TouchableOpacity 
                 onPress={() => {
                   setShowDropdown(false);
-                  setModalVisible(false);
+                  setOnboardModalVisible(false);
                 }}
                 style={styles.closeModalCross}
               >
@@ -198,8 +276,19 @@ export default function CollectScreen() {
               style={styles.input}
             />
 
-            {/* 3. BUSINESS TYPE / SERVICE SCROLLABLE SELECTOR */}
-            <Text style={styles.inputContextLabel}>3. BUSINESS TYPE / SERVICE</Text>
+            {/* 3. PHONE NUMBER FIELD */}
+            <Text style={styles.inputContextLabel}>3. PHONE NUMBER</Text>
+            <TextInput
+              placeholder="e.g. +265 888 12 34 56"
+              placeholderTextColor="#999999"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+              keyboardType="phone-pad"
+              style={styles.input}
+            />
+
+            {/* 4. BUSINESS TYPE / SERVICE SELECTOR */}
+            <Text style={styles.inputContextLabel}>4. BUSINESS TYPE / SERVICE</Text>
             <TouchableOpacity
               activeOpacity={0.9}
               style={[
@@ -217,7 +306,6 @@ export default function CollectScreen() {
               <Ionicons name={showDropdown ? "chevron-up" : "chevron-down"} size={18} color="#073474" />
             </TouchableOpacity>
 
-            {/* HIGH-ACCESSIBILITY SCROLLABLE INLINE DROPDOWN BOX */}
             {showDropdown && (
               <View style={styles.dropdownScrollContainer}>
                 <ScrollView 
@@ -256,7 +344,6 @@ export default function CollectScreen() {
               </View>
             )}
 
-            {/* IMMUTABLE SERVER-DEFINED FEES NOTIFICATION BANNER */}
             {selectedBusiness && !showDropdown && (
               <View style={styles.cashDueNotificationBanner}>
                 <Text style={styles.cashBannerLabel}>FIXED DAILY CASH DUE:</Text>
@@ -264,12 +351,11 @@ export default function CollectScreen() {
               </View>
             )}
 
-            {/* 4. FORM ACTIONS ACCESSIBILITY BUTTON PANEL */}
             <View style={styles.modalActions}>
               <TouchableOpacity
                 onPress={() => {
                   setShowDropdown(false);
-                  setModalVisible(false);
+                  setOnboardModalVisible(false);
                 }}
                 style={styles.cancelBtn}
                 activeOpacity={0.7}
@@ -281,9 +367,9 @@ export default function CollectScreen() {
                 onPress={handleOnboardAndCollect}
                 style={[
                   styles.saveBtn, 
-                  { backgroundColor: (nationalId.trim() && vendorName.trim() && selectedBusiness) ? "#00FFCC" : "#CCCCCC" }
+                  { backgroundColor: (nationalId.trim() && vendorName.trim() && phoneNumber.trim() && selectedBusiness) ? "#00FFCC" : "#CCCCCC" }
                 ]}
-                disabled={!nationalId.trim() || !vendorName.trim() || !selectedBusiness}
+                disabled={!nationalId.trim() || !vendorName.trim() || !phoneNumber.trim() || !selectedBusiness}
                 activeOpacity={0.8}
               >
                 <Text style={styles.saveText}>Create QR &amp; Collect</Text>
@@ -293,304 +379,77 @@ export default function CollectScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* ================= MODAL CREATE QR ONLY SHEET ================= */}
+      <Modal
+        visible={createQrModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setCreateQrModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Create Vendor QR</Text>
+              <TouchableOpacity 
+                onPress={() => setCreateQrModalVisible(false)}
+                style={styles.closeModalCross}
+              >
+                <Ionicons name="close" size={20} color="#666666" />
+              </TouchableOpacity>
+            </View>
+
+            {/* 1. NATIONAL ID FIELD */}
+            <Text style={styles.inputContextLabel}>1. VENDOR NATIONAL ID NUMBER</Text>
+            <TextInput
+              placeholder="e.g. BR76HJK9"
+              placeholderTextColor="#999999"
+              value={nationalId}
+              onChangeText={setNationalId}
+              autoCapitalize="characters"
+              style={styles.input}
+            />
+
+            {/* 2. VENDOR NAME FIELD */}
+            <Text style={styles.inputContextLabel}>2. VENDOR USERNAME / FULL NAME</Text>
+            <TextInput
+              placeholder="e.g. Mary Chirwa"
+              placeholderTextColor="#999999"
+              value={vendorName}
+              onChangeText={setVendorName}
+              style={styles.input}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                onPress={() => setCreateQrModalVisible(false)}
+                style={styles.cancelBtn}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleCreateQrOnly}
+                style={[
+                  styles.saveBtn, 
+                  { backgroundColor: (nationalId.trim() && vendorName.trim()) ? "#00FFCC" : "#CCCCCC" }
+                ]}
+                disabled={!nationalId.trim() || !vendorName.trim()}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.saveText}>Generate QR</Text>
+                <Ionicons name="qr-code-outline" size={16} color="#073474" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </LinearGradient>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  headerCard: {
-    marginHorizontal: 16,
-    padding: 20,
-    borderRadius: 24,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#fff",
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    marginTop: 4,
-    color: "rgba(255,255,255,0.75)",
-    fontSize: 13,
-  },
-  actionRowContainer: {
-    flexDirection: "row",
-    marginHorizontal: 16,
-    gap: 12,
-    marginBottom: 24,
-  },
-  actionButtonSplit: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  actionButtonScanVariant: {
-    backgroundColor: "#073474", 
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-  },
-  actionText: {
-    color: "#073474",
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 0.2,
-  },
-  actionTextScanVariant: {
-    color: "#FFFFFF",
-  },
-  sectionTitle: {
-    marginHorizontal: 16,
-    marginBottom: 14,
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#fff",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  card: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-    overflow: "hidden",
-  },
-  cardInfoGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  avatarIconPlaceholder: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  name: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 15,
-  },
-  location: {
-    color: "rgba(255,255,255,0.65)",
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  amount: {
-    color: "#f9fafa", 
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 16,
-  },
-  modalCard: {
-    width: "100%",
-    padding: 22,
-    borderRadius: 28,
-    backgroundColor: "#FFFFFF", 
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 12,
-  },
-  modalHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 18,
-  },
-  modalTitle: {
-    fontSize: 19,
-    fontWeight: "800",
-    color: "#111111",
-    letterSpacing: -0.5,
-  },
-  closeModalCross: {
-    padding: 6,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 12,
-  },
-  inputContextLabel: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#666666",
-    marginBottom: 6,
-    letterSpacing: 0.5,
-  },
-  input: {
-    backgroundColor: "#F3F4F6",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 14,
-    color: "#000000",
-    fontSize: 14,
-    fontWeight: "600",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  dropdownSelectorTrigger: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    marginBottom: 14,
-  },
-  dropdownSelectorTriggerActive: {
-    borderColor: "#073474",
-    borderWidth: 1.5,
-  },
-  dropdownTriggerText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#999999",
-    flex: 1,
-    paddingRight: 8,
-  },
-  dropdownTriggerTextActive: {
-    color: "#073474",
-    fontWeight: "700",
-  },
-  dropdownScrollContainer: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    marginBottom: 14,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  dropdownInnerScroll: {
-    maxHeight: 150, // Locks container to support crisp scrolling behaviors inside the modal sheet layout
-  },
-  dropdownInlineOption: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-  },
-  dropdownInlineOptionSelected: {
-    backgroundColor: "rgba(7, 52, 116, 0.04)",
-  },
-  optionTextBlock: {
-    flex: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingRight: 10,
-  },
-  optionLabelText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#444444",
-    flex: 1,
-    paddingRight: 8,
-  },
-  optionLabelTextSelected: {
-    color: "#073474",
-    fontWeight: "700",
-  },
-  optionFeeText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#555555",
-  },
-  cashDueNotificationBanner: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "rgba(7, 52, 116, 0.05)",
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "rgba(7, 52, 116, 0.1)",
-  },
-  cashBannerLabel: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#073474",
-  },
-  cashBannerValue: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: "#073474",
-  },
-  modalActions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 4,
-    gap: 10,
-  },
-  cancelBtn: {
-    paddingVertical: 14,
-    borderRadius: 14,
-    backgroundColor: "#F3F4F6",
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  saveBtn: {
-    paddingVertical: 14,
-    borderRadius: 14,
-    flex: 2,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  cancelText: {
-    color: "#666666",
-    fontWeight: "700",
-    fontSize: 14,
-  },
-  saveText: {
-    color: "#073474",
-    fontWeight: "900",
-    fontSize: 14,
-  },
-});

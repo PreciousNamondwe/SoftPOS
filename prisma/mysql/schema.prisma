@@ -1,0 +1,37 @@
+// /workspaces/SoftPOS/prisma/mysql/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../node_modules/@prisma-mysql/client"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Agent {
+  id        String   @id @default(uuid())
+  agentId   String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  vendors   Vendor[]
+}
+
+model Vendor {
+  id              String   @id @default(uuid())
+  businessName    String
+  tradingName     String?
+  tpin            String   @unique
+  nationalId      String   @unique
+  mobileNumber    String
+  email           String?
+  physicalAddress String   @db.Text
+  district        String
+  businessType    String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  agentId         String
+  agent           Agent    @relation(fields: [agentId], references: [agentId])
+}
