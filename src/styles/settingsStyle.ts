@@ -17,6 +17,17 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     letterSpacing: -0.5,
   },
+  // Add to your StyleSheet in settingsStyle.ts
+statusSubText: {
+  fontSize: 11,
+  fontWeight: "500",
+  marginTop: 2,
+},
+statusDot: {
+  width: 8,
+  height: 8,
+  borderRadius: 4,
+},
   sectionLabelTitle: {
     color: "#FFFFFF",
     fontSize: 13,

@@ -1,13 +1,17 @@
 // ============================================================
 // app/login.tsx — Login Screen (routes admin to adminTabs)
-// Lomis Field Terminal
+// LORMIS-POS
 // ============================================================
 
+import { useAuth } from "@/contexts/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import * as LocalAuthentication from "expo-local-authentication";
 import { useRouter } from "expo-router";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
+    ActivityIndicator,
+    Alert,
     Image,
     KeyboardAvoidingView,
     Platform,
@@ -17,12 +21,8 @@ import {
     TextInput,
     TouchableOpacity,
     View,
-    ActivityIndicator,
-    Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as LocalAuthentication from "expo-local-authentication";
-import { useAuth } from "@/contexts/AuthContext";
 
 export default function LoginScreen() {
     const insets = useSafeAreaInsets();
@@ -105,7 +105,7 @@ export default function LoginScreen() {
                     <View style={styles.headerContainer}>
                         <Image source={require("@/assets/images/malawi-government-logo.png")} style={styles.crestLogo} />
                         <Text style={styles.govTitle}>GOVERNMENT OF MALAWI</Text>
-                        <Text style={styles.subTitle}>Field Terminal</Text>
+                        <Text style={styles.subTitle}>LORMIS-POS</Text>
                     </View>
 
                     {/* FORM */}

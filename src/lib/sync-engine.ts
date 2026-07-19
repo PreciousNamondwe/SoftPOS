@@ -1,6 +1,6 @@
 // ============================================================
-// lib/sync-engine.ts — Bidirectional Sync Engine (COMPLETE FIX)
-// Handles ALL tables, endless loop, proper unique key handling
+// lib/sync-engine.ts — Bidirectional Sync Engine
+// Handles ALL tables, soft-delete sync, no rebase on delete
 // ============================================================
 
 import { db } from "./database";
@@ -26,6 +26,7 @@ export interface SyncRecord {
   operation: "INSERT" | "UPDATE" | "DELETE";
   payload: string;
   retry_count: number;
+  is_deleted: number;
   is_synced: number;
   created_at: string;
 }
@@ -38,7 +39,7 @@ export function queueSync(
   payload: object
 ): number {
   const result = db.runSync(
-    "INSERT INTO sync_queue (table_name, operation, payload, is_synced) VALUES (?, ?, ?, 0);",
+    "INSERT INTO sync_queue (table_name, operation, payload, is_deleted, is_synced) VALUES (?, ?, ?, 0, 0);",
     [tableName, operation, JSON.stringify(payload)]
   );
   return result.lastInsertRowId;
@@ -47,7 +48,7 @@ export function queueSync(
 export function getUnsyncedItems(): SyncRecord[] {
   return db.getAllSync<SyncRecord>(`
     SELECT * FROM sync_queue 
-    WHERE is_synced = 0 AND retry_count < 5
+    WHERE is_deleted = 0 AND is_synced = 0 AND retry_count < 5
     ORDER BY created_at ASC;
   `) || [];
 }
@@ -62,7 +63,7 @@ export function incrementRetry(id: number): void {
 
 export function clearSyncedItems(daysOld: number = 7): void {
   db.runSync(
-    "DELETE FROM sync_queue WHERE is_synced = 1 AND created_at < datetime('now', ?);",
+    "DELETE FROM sync_queue WHERE is_deleted = 0 AND is_synced = 1 AND created_at < datetime('now', ?);",
     [`-${daysOld} days`]
   );
 }
@@ -77,43 +78,37 @@ export function markClean(tableName: string, recordId: number): void {
   db.runSync(`UPDATE ${tableName} SET is_synced = 1 WHERE id = ?;`, [recordId]);
 }
 
-// ─── Get Dirty Records ─────────────────────────────────────
+// ─── Get Dirty Records — includes is_deleted so deletions sync ─
 
 export function getDirtyRoles() {
-  return db.getAllSync(`SELECT id, role_key, role_label, description, color, created_at FROM roles WHERE is_synced = 0;`) || [];
+  return db.getAllSync(`SELECT id, role_key, role_label, description, color, is_deleted, created_at FROM roles WHERE is_synced = 0;`) || [];
 }
 
 export function getDirtyUsers() {
-  return db.getAllSync(`SELECT id, user_id, full_name, role, pin_hash, biometric_key, is_active, last_login, created_at, updated_at FROM user WHERE is_synced = 0;`) || [];
+  return db.getAllSync(`SELECT id, user_id, full_name, role, pin_hash, biometric_key, is_active, is_deleted, last_login, created_at, updated_at FROM user WHERE is_synced = 0;`) || [];
 }
 
 export function getDirtySessions() {
-  return db.getAllSync(`SELECT id, user_id, jwt_token, refresh_token, expires_at, is_offline, created_at FROM sessions WHERE is_synced = 0;`) || [];
+  return db.getAllSync(`SELECT id, user_id, jwt_token, refresh_token, expires_at, is_offline, is_deleted, created_at FROM sessions WHERE is_synced = 0;`) || [];
 }
 
 export function getDirtyAuditLogs() {
-  return db.getAllSync(`SELECT id, user_id, action, details, created_at FROM audit_logs WHERE is_synced = 0;`) || [];
+  return db.getAllSync(`SELECT id, user_id, action, details, is_deleted, created_at FROM audit_logs WHERE is_synced = 0;`) || [];
 }
 
 export function getDirtyBusinessTypes() {
-  return db.getAllSync(`SELECT id, name, description, amount_charge, created_at FROM business_types WHERE is_synced = 0;`) || [];
+  return db.getAllSync(`SELECT id, name, description, amount_charge, is_deleted, created_at FROM business_types WHERE is_synced = 0;`) || [];
 }
 
 export function getDirtyBusinessOwners() {
-  return db.getAllSync(`SELECT id, full_name, national_id, location, date_of_birth, allow_multiple_businesses, max_businesses_count, created_at FROM business_owners WHERE is_synced = 0;`) || [];
+  return db.getAllSync(`SELECT id, full_name, national_id, location, date_of_birth, allow_multiple_businesses, max_businesses_count, is_deleted, created_at FROM business_owners WHERE is_synced = 0;`) || [];
 }
 
 export function getDirtyBusinesses() {
-  return db.getAllSync(`SELECT id, business_name, registration_number, business_type_id, owner_id, address, phone, email, tax_number, is_active, created_at FROM businesses WHERE is_synced = 0;`) || [];
+  return db.getAllSync(`SELECT id, business_name, registration_number, business_type_id, owner_id, address, phone, email, tax_number, is_active, is_deleted, created_at FROM businesses WHERE is_synced = 0;`) || [];
 }
 
-// ─── Column Mapper ─────────────────────────────────────────
-
-function camelToSnake(str: string): string {
-  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-}
-
-// ─── Apply Server Record (PULL) — BULLETPROOF ─────────────
+// ─── Apply Server Record (PULL) — with is_deleted handling ──
 export function applyServerRecord(tableName: string, record: Record<string, any>): void {
   try {
     // 1. camelCase → snake_case
@@ -129,6 +124,7 @@ export function applyServerRecord(tableName: string, record: Record<string, any>
     if (mapped.allow_multiple_businesses != null) mapped.allow_multiple_businesses = Number(mapped.allow_multiple_businesses);
     if (mapped.max_businesses_count != null) mapped.max_businesses_count = Number(mapped.max_businesses_count);
     if (mapped.is_active != null) mapped.is_active = Number(mapped.is_active);
+    if (mapped.is_deleted != null) mapped.is_deleted = Number(mapped.is_deleted);
     if (mapped.is_synced != null) mapped.is_synced = Number(mapped.is_synced);
     if (mapped.is_offline != null) mapped.is_offline = Number(mapped.is_offline);
     if (mapped.amount_charge != null) mapped.amount_charge = parseFloat(mapped.amount_charge);
@@ -140,7 +136,7 @@ export function applyServerRecord(tableName: string, record: Record<string, any>
     // 3. Try INSERT first
     try {
       db.runSync(`INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${placeholders})`, values);
-      return; // Success!
+      return;
     } catch {
       // INSERT failed — row exists with same unique key
     }
@@ -174,6 +170,7 @@ function getUniqueColumn(tableName: string): string {
     default: return "id";
   }
 }
+
 // ─── Full Sync — ALL TABLES ────────────────────────────────
 
 export async function performFullSync(config: SyncConfig): Promise<SyncResult[]> {
@@ -233,19 +230,18 @@ async function pushToServer(config: SyncConfig, tableName: string, records: any[
     }
 
     const data = JSON.parse(text);
-    
+
     for (const r of records) {
       if (data.syncedIds?.includes(r.id)) { 
         markClean(tableName, r.id); 
         result.pushed++; 
       }
     }
-    
-    // NEW: Detailed error logging
+
     for (const fd of data.failedDetails || []) {
       result.errors.push(`${tableName} #${fd.id}: ${fd.error}`);
     }
-    
+
     console.log(`✅ Push ${tableName}: ${result.pushed} synced, ${(data.failedDetails||[]).length} failed`);
   } catch (e: any) { 
     result.errors.push(e.message); 
@@ -309,8 +305,8 @@ export function isAutoSyncRunning(): boolean { return syncInterval !== null; }
 // ─── Sync Status ───────────────────────────────────────────
 
 export function getSyncStatus() {
-  const pending = db.getFirstSync<{ count: number }>("SELECT COUNT(*) as count FROM sync_queue WHERE is_synced = 0;");
-  const failed = db.getFirstSync<{ count: number }>("SELECT COUNT(*) as count FROM sync_queue WHERE is_synced = 0 AND retry_count >= 5;");
-  const lastSync = db.getFirstSync<{ created_at: string }>("SELECT created_at FROM sync_queue WHERE is_synced = 1 ORDER BY created_at DESC LIMIT 1;");
+  const pending = db.getFirstSync<{ count: number }>("SELECT COUNT(*) as count FROM sync_queue WHERE is_deleted = 0 AND is_synced = 0;");
+  const failed = db.getFirstSync<{ count: number }>("SELECT COUNT(*) as count FROM sync_queue WHERE is_deleted = 0 AND is_synced = 0 AND retry_count >= 5;");
+  const lastSync = db.getFirstSync<{ created_at: string }>("SELECT created_at FROM sync_queue WHERE is_deleted = 0 AND is_synced = 1 ORDER BY created_at DESC LIMIT 1;");
   return { pending: pending?.count || 0, failed: failed?.count || 0, lastSync: lastSync?.created_at || null, isRunning: isAutoSyncRunning() };
 }

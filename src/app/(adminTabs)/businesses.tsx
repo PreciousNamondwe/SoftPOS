@@ -513,7 +513,7 @@ export default function BusinessesScreen() {
             refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor="rgba(255,255,255,0.6)"
-            colors={["#5C8CE8"]}
+            colors={["#fbfcff"]}
             progressBackgroundColor="rgba(255,255,255,0.1)"
           />
         }
@@ -1275,17 +1275,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(255,255,255,0.23)",
   },
   addHeaderBtn: {
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: "rgba(92,140,232,0.3)",
+    backgroundColor: "rgba(255, 255, 255, 0.23)",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(92,140,232,0.5)",
+    borderColor: "rgba(255, 255, 255, 0.23)",
   },
 
   // Tabs
@@ -1299,14 +1299,14 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255, 255, 255, 0.23)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
     alignItems: "center",
   },
   tabBtnActive: {
     backgroundColor: "rgba(92,140,232,0.25)",
-    borderColor: "rgba(92,140,232,0.4)",
+    borderColor: "rgba(92,140,232,0.5)",
   },
   tabText: {
     color: "rgba(255,255,255,0.5)",
@@ -1323,7 +1323,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(255,255,255,0.23)",
     borderRadius: 14,
     paddingHorizontal: 14,
     height: 46,
@@ -1346,11 +1346,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   listCard: {
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255, 255, 255, 0.23)",
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.23)",
   },
   listCardHeader: {
     flexDirection: "row",

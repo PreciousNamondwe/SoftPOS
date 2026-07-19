@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useAuth } from "@/contexts/AuthContext";
-import { db, logAudit } from "@/lib/database";
+import { db, deleteRole, logAudit } from "@/lib/database";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "expo-router";
@@ -51,9 +51,10 @@ export default function RolesScreen() {
     function loadRoles() {
         try {
             ensureRolesTable();
-            const results = db.getAllSync<Role>(
-                "SELECT * FROM roles ORDER BY created_at DESC;"
-            );
+            // In roles.tsx — add WHERE is_deleted = 0
+const results = db.getAllSync<Role>(
+    "SELECT * FROM roles WHERE is_deleted = 0 ORDER BY created_at DESC;"
+);
             setRoles(results);
         } catch (error) {
             console.error("Load roles error:", error);
@@ -161,34 +162,33 @@ export default function RolesScreen() {
         }
     }
 
-    // ─── Delete Role ────────────────────────────────────────
-    function handleDeleteRole(role: Role) {
-        Alert.alert(
-            "Delete Role",
-            `Delete "${role.role_label}" (${role.role_key})?\n\nThis cannot be undone.`,
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: () => {
-                        try {
-                            db.runSync("DELETE FROM roles WHERE id = ?;", [role.id]);
-                            if (user) {
-                                logAudit(user.user_id, "role_deleted", {
-                                    role_key: role.role_key,
-                                    role_label: role.role_label,
-                                });
-                            }
-                            loadRoles();
-                        } catch (error) {
-                            Alert.alert("Error", "Failed to delete role.");
+   function handleDeleteRole(role: Role) {
+    Alert.alert(
+        "Delete Role",
+        `Delete "${role.role_label}" (${role.role_key})?\n\nThis cannot be undone.`,
+        [
+            { text: "Cancel", style: "cancel" },
+            {
+                text: "Delete",
+                style: "destructive",
+                onPress: () => {
+                    const result = deleteRole(role.id);
+                    if (result.success) {
+                        if (user) {
+                            logAudit(user.user_id, "role_deleted", {
+                                role_key: role.role_key,
+                                role_label: role.role_label,
+                            });
                         }
-                    },
+                        loadRoles();
+                    } else {
+                        Alert.alert("Cannot Delete", result.message);
+                    }
                 },
-            ]
-        );
-    }
+            },
+        ]
+    );
+}
 
     // ─── Filter ─────────────────────────────────────────────
     const filteredRoles = searchQuery.trim()
@@ -202,7 +202,6 @@ export default function RolesScreen() {
     const renderRoleItem = ({ item }: { item: Role }) => (
         <View style={styles.roleCard}>
             <View style={styles.roleLeft}>
-                <View style={[styles.roleDot, { backgroundColor: item.color }]} />
                 <View style={styles.roleInfo}>
                     <Text style={styles.roleLabel}>{item.role_label}</Text>
                     <Text style={styles.roleKey}>{item.role_key}</Text>
@@ -222,10 +221,16 @@ export default function RolesScreen() {
             <View style={{ flex: 1, paddingTop: insets.top + 16, paddingHorizontal: 20 }}>
                 {/* HEADER */}
                 <View style={styles.header}>
-                    <View>
+                    <View style={styles.headerLeft}>
                         <Text style={styles.headerTitle}>Roles</Text>
                         <Text style={styles.headerCount}>{roles.length} roles defined</Text>
                     </View>
+                    <TouchableOpacity
+                        style={styles.addHeaderBtn}
+                        onPress={openModal}
+                    >
+                        <Ionicons name="add-outline" size={22} color="#FFFFFF" />
+                    </TouchableOpacity>
                 </View>
 
                 {/* SEARCH */}
@@ -270,16 +275,6 @@ export default function RolesScreen() {
                     }
                 />
             </View>
-
-            {/* FLOATING ADD BUTTON */}
-            <TouchableOpacity style={styles.fab} onPress={openModal} activeOpacity={0.85}>
-                <LinearGradient
-                    colors={["#5C8CE8", "#456da5"]}
-                    style={styles.fabGradient}
-                >
-                    <Ionicons name="add" size={28} color="#FFFFFF" />
-                </LinearGradient>
-            </TouchableOpacity>
 
             {/* ─── MODAL FORM ─── */}
             <Modal
@@ -354,8 +349,12 @@ export default function RolesScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1 },
     header: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
         marginBottom: 16,
     },
+    headerLeft: { flex: 1 },
     headerTitle: {
         color: "#FFFFFF",
         fontSize: 28,
@@ -368,12 +367,22 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         marginTop: 4,
     },
+    addHeaderBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        backgroundColor: "rgba(255, 255, 255, 0.23)",
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: "rgba(255, 255, 255, 0.23)",
+    },
     searchWrap: {
         flexDirection: "row",
         alignItems: "center",
         backgroundColor: "rgba(255, 255, 255, 0.06)",
         borderWidth: 1,
-        borderColor: "rgba(255, 255, 255, 0.1)",
+        borderColor: "rgba(255, 255, 255, 0.23)",
         borderRadius: 14,
         paddingHorizontal: 14,
         height: 48,
@@ -392,7 +401,7 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        backgroundColor: "rgba(255, 255, 255, 0.05)",
+        backgroundColor: "rgba(255, 255, 255, 0.23)",
         borderRadius: 16,
         padding: 16,
         marginBottom: 10,
@@ -404,11 +413,6 @@ const styles = StyleSheet.create({
         alignItems: "center",
         gap: 14,
         flex: 1,
-    },
-    roleDot: {
-        width: 14,
-        height: 14,
-        borderRadius: 7,
     },
     roleInfo: {
         flex: 1,
@@ -447,27 +451,6 @@ const styles = StyleSheet.create({
         color: "rgba(255, 255, 255, 0.3)",
         fontSize: 14,
         fontWeight: "500",
-    },
-    // ─── FAB ───
-    fab: {
-        position: "absolute",
-        right: 24,
-        bottom: 100,
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.35,
-        shadowRadius: 12,
-        elevation: 8,
-    },
-    fabGradient: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        justifyContent: "center",
-        alignItems: "center",
     },
     // ─── MODAL ───
     modalOverlay: {

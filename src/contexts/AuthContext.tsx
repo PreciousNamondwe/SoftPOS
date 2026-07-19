@@ -1,11 +1,18 @@
 // ============================================================
 // contexts/AuthContext.tsx — Global Auth State & Auto-Init (FIXED)
-// Lomis Field Terminal
+// Lomis Field Terminal — with is_deleted soft-delete migration
 // ============================================================
 
 import { comparePassword } from "@/lib/bcrypt";
-import { createSession, getUserById, initializeDatabase, logAudit, updateLastLogin } from "@/lib/database";
-import { initializeBusinessTables } from "@/lib/database-business";
+import {
+  createSession,
+  getUserById,
+  initializeDatabase,
+  logAudit,
+  migrateAddIsDeleted,
+  updateLastLogin,
+} from "@/lib/database";
+import { initializeBusinessTables, migrateBusinessTables } from "@/lib/database-business";
 import { seedAdminUser } from "@/lib/seed-admin";
 import { getSyncStatus, performFullSync, startAutoSync } from "@/lib/sync-engine";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -69,6 +76,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log("🔄 [AuthContext] Initializing database...");
         initializeDatabase();
         initializeBusinessTables();
+
+        // ✅ Migrate is_deleted columns for existing databases
+        migrateAddIsDeleted();
+        migrateBusinessTables();
+        console.log("✅ [AuthContext] is_deleted migration complete.");
 
         const seedResult = await seedAdminUser();
         if (seedResult.success) {
@@ -236,7 +248,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // ✅ FIXED: Start auto-sync with correct API URL
       const apiUrl = await AsyncStorage.getItem("@lomis:api_url") || "https://go-revenue-pos.vercel.app";
       console.log("🔄 [AuthContext] Starting auto-sync to:", apiUrl);
-// Every 5 seconds for fast sync
       startAutoSync({
         apiBaseUrl: apiUrl,
         authToken: token,

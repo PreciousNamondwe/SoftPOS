@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { hashPassword } from "@/lib/bcrypt";
 import {
     createUser,
+    deleteUser,
     getAllRoles,
     getAllUsers,
     getRoleByKey,
@@ -174,44 +175,72 @@ export default function AddUserScreen() {
         }
     }
 
-    // ─── Toggle user status ─────────────────────────────────
-    function handleToggleUserStatus(targetUserId: string) {
-        const targetUser = users.find((u) => u.user_id === targetUserId);
-        if (!targetUser) return;
+    // ─── Toggle user active status (activate/deactivate) ──────
+function handleToggleUserStatus(targetUserId: string) {
+    const targetUser = users.find((u) => u.user_id === targetUserId);
+    if (!targetUser) return;
 
-        const currentStatus = targetUser.is_active;
-        const newStatus = currentStatus === 1 ? 0 : 1;
-        const action = newStatus === 1 ? "activate" : "deactivate";
+    const currentStatus = targetUser.is_active;
+    const newStatus = currentStatus === 1 ? 0 : 1;
+    const action = newStatus === 1 ? "activate" : "deactivate";
 
-        Alert.alert(
-            `${action === "activate" ? "Activate" : "Deactivate"} User`,
-            `Are you sure you want to ${action} user "${targetUserId}"?`,
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: action === "activate" ? "Activate" : "Deactivate",
-                    style: action === "activate" ? "default" : "destructive",
-                    onPress: () => {
-                        try {
-                            toggleUserStatus(targetUserId);
+    Alert.alert(
+        `${action === "activate" ? "Activate" : "Deactivate"} User`,
+        `Are you sure you want to ${action} user "${targetUserId}"?`,
+        [
+            { text: "Cancel", style: "cancel" },
+            {
+                text: action === "activate" ? "Activate" : "Deactivate",
+                style: action === "activate" ? "default" : "destructive",
+                onPress: () => {
+                    try {
+                        toggleUserStatus(targetUserId);
 
-                            if (currentUser) {
-                                logAudit(currentUser.user_id, `user_${action}d`, {
-                                    target_user_id: targetUserId,
-                                    new_status: newStatus,
-                                });
-                            }
-
-                            loadData();
-                        } catch (error) {
-                            Alert.alert("Error", "Failed to update user status.");
+                        if (currentUser) {
+                            logAudit(currentUser.user_id, `user_${action}d`, {
+                                target_user_id: targetUserId,
+                                new_status: newStatus,
+                            });
                         }
-                    },
-                },
-            ]
-        );
-    }
 
+                        loadData();
+                    } catch (error) {
+                        Alert.alert("Error", "Failed to update user status.");
+                    }
+                },
+            },
+        ]
+    );
+}
+
+// ─── Soft-delete user ─────────────────────────────────────
+function handleDeleteUser(targetUser: UserWithRole) {
+    Alert.alert(
+        "Delete User",
+        `Delete "${targetUser.full_name}" (${targetUser.user_id})?\n\nThis will soft-delete the user and their sessions. They can be restored later.`,
+        [
+            { text: "Cancel", style: "cancel" },
+            {
+                text: "Delete",
+                style: "destructive",
+                onPress: () => {
+                    const result = deleteUser(targetUser.user_id);
+                    if (result.success) {
+                        if (currentUser) {
+                            logAudit(currentUser.user_id, "user_deleted", {
+                                target_user_id: targetUser.user_id,
+                                target_user_name: targetUser.full_name,
+                            });
+                        }
+                        loadData();
+                    } else {
+                        Alert.alert("Error", result.message);
+                    }
+                },
+            },
+        ]
+    );
+}
     // ─── Filter users ───────────────────────────────────────
     const filteredUsers = searchQuery.trim()
         ? searchUsers(searchQuery.trim())
@@ -227,50 +256,63 @@ export default function AddUserScreen() {
         return role?.role_label || roleKey;
     }
 
-    const renderUserItem = ({ item }: { item: UserWithRole }) => {
-        const roleColor = getRoleColor(item.role);
-        const roleLabel = getRoleLabel(item.role);
+   const renderUserItem = ({ item }: { item: UserWithRole }) => {
+    const roleColor = getRoleColor(item.role);
+    const roleLabel = getRoleLabel(item.role);
 
-        return (
-            <View style={styles.userCard}>
-                <View style={styles.userRow}>
-                    <View style={[styles.avatar, { backgroundColor: roleColor + "25" }]}>
-                        <Ionicons name="person" size={20} color={roleColor} />
-                    </View>
-                    <View style={styles.userInfo}>
-                        <Text style={styles.userName}>{item.full_name}</Text>
-                        <Text style={styles.userId}>{item.user_id}</Text>
-                        <View style={styles.userMeta}>
-                            <View style={[styles.roleBadge, { backgroundColor: roleColor + "20" }]}>
-                                <Text style={[styles.roleText, { color: roleColor }]}>
-                                    {roleLabel.toUpperCase()}
-                                </Text>
-                            </View>
-                            {item.is_active === 1 ? (
-                                <View style={styles.statusBadgeActive}>
-                                    <Text style={styles.statusTextActive}>ACTIVE</Text>
-                                </View>
-                            ) : (
-                                <View style={styles.statusBadgeInactive}>
-                                    <Text style={styles.statusTextInactive}>INACTIVE</Text>
-                                </View>
-                            )}
+    return (
+        <View style={styles.userCard}>
+            <View style={styles.userRow}>
+                <View style={[styles.avatar, { backgroundColor: roleColor + "25" }]}>
+                    <Ionicons name="person" size={20} color={roleColor} />
+                </View>
+                <View style={styles.userInfo}>
+                    <Text style={styles.userName}>{item.full_name}</Text>
+                    <Text style={styles.userId}>{item.user_id}</Text>
+                    <View style={styles.userMeta}>
+                        <View style={[styles.roleBadge, { backgroundColor: roleColor + "20" }]}>
+                            <Text style={[styles.roleText, { color: roleColor }]}>
+                                {roleLabel.toUpperCase()}
+                            </Text>
                         </View>
+                        {item.is_active === 1 ? (
+                            <View style={styles.statusBadgeActive}>
+                                <Text style={styles.statusTextActive}>ACTIVE</Text>
+                            </View>
+                        ) : (
+                            <View style={styles.statusBadgeInactive}>
+                                <Text style={styles.statusTextInactive}>INACTIVE</Text>
+                            </View>
+                        )}
                     </View>
+                </View>
+                
+                {/* Action buttons row */}
+                <View style={styles.actionButtons}>
+                    {/* Toggle active/inactive */}
                     <TouchableOpacity
                         onPress={() => handleToggleUserStatus(item.user_id)}
+                        style={styles.actionBtn}
                     >
                         <Ionicons
                             name={item.is_active === 1 ? "close-circle" : "checkmark-circle"}
                             size={22}
-                            color={item.is_active === 1 ? "#fff6f6" : "#10b981"}
+                            color={item.is_active === 1 ? "#ebe9e6" : "#10b981"}
                         />
+                    </TouchableOpacity>
+
+                    {/* Soft-delete (trash) */}
+                    <TouchableOpacity
+                        onPress={() => handleDeleteUser(item)}
+                        style={styles.actionBtn}
+                    >
+                        <Ionicons name="trash-outline" size={20} color="#f8f8f8" />
                     </TouchableOpacity>
                 </View>
             </View>
-        );
-    };
-
+        </View>
+    );
+};
     const isFormValid = userId.trim() && fullName.trim() && pin.trim() && selectedRole && !isSubmitting;
 
     return (
@@ -278,10 +320,16 @@ export default function AddUserScreen() {
             <View style={{ flex: 1, paddingTop: insets.top + 16, paddingHorizontal: 20 }}>
                 {/* HEADER */}
                 <View style={styles.header}>
-                    <View>
+                    <View style={styles.headerLeft}>
                         <Text style={styles.headerTitle}>Users</Text>
                         <Text style={styles.headerCount}>{filteredUsers.length} users</Text>
                     </View>
+                    <TouchableOpacity
+                        style={styles.addHeaderBtn}
+                        onPress={openModal}
+                    >
+                        <Ionicons name="add-outline" size={22} color="#FFFFFF" />
+                    </TouchableOpacity>
                 </View>
 
                 {/* SEARCH */}
@@ -326,16 +374,6 @@ export default function AddUserScreen() {
                     }
                 />
             </View>
-
-            {/* FLOATING ADD BUTTON */}
-            <TouchableOpacity style={styles.fab} onPress={openModal} activeOpacity={0.85}>
-                <LinearGradient
-                    colors={["#5C8CE8", "#456da5"]}
-                    style={styles.fabGradient}
-                >
-                    <Ionicons name="add" size={28} color="#FFFFFF" />
-                </LinearGradient>
-            </TouchableOpacity>
 
             {/* ─── ADD USER MODAL ─── */}
             <Modal
@@ -535,8 +573,12 @@ export default function AddUserScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1 },
     header: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
         marginBottom: 16,
     },
+    headerLeft: { flex: 1 },
     headerTitle: {
         color: "#FFFFFF",
         fontSize: 28,
@@ -549,12 +591,22 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         marginTop: 4,
     },
+    addHeaderBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        backgroundColor: "rgba(255, 255, 255, 0.23)",
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: "rgba(255, 255, 255, 0.23)",
+    },
     searchWrap: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "rgba(255, 255, 255, 0.06)",
+        backgroundColor: "rgba(255,255,255,0.06)",
         borderWidth: 1,
-        borderColor: "rgba(255, 255, 255, 0.1)",
+        borderColor: "rgba(255, 255, 255, 0.23)",
         borderRadius: 14,
         paddingHorizontal: 14,
         height: 48,
@@ -570,7 +622,7 @@ const styles = StyleSheet.create({
         fontWeight: "500",
     },
     userCard: {
-        backgroundColor: "rgba(255, 255, 255, 0.05)",
+        backgroundColor: "rgba(255, 255, 255, 0.23)",
         borderRadius: 16,
         padding: 16,
         marginBottom: 10,
@@ -642,16 +694,7 @@ const styles = StyleSheet.create({
         fontWeight: "800",
         letterSpacing: 0.5,
     },
-    actionBtn: {
-        width: 40,
-        height: 40,
-        borderRadius: 10,
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    actionBtnSuccess: {
-        backgroundColor: "rgba(16, 185, 129, 0.1)",
-    },
+    
     emptyState: {
         alignItems: "center",
         marginTop: 80,
@@ -667,26 +710,19 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: "500",
     },
-    fab: {
-        position: "absolute",
-        right: 24,
-        bottom: 100,
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.35,
-        shadowRadius: 12,
-        elevation: 8,
-    },
-    fabGradient: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        justifyContent: "center",
-        alignItems: "center",
-    },
+    actionButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+},
+  actionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    justifyContent: "center",
+    alignItems: "center",
+},
     modalOverlay: {
         flex: 1,
         justifyContent: "flex-end",

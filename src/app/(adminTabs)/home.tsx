@@ -1,15 +1,16 @@
 // ============================================================
 // app/(adminTabs)/dashboard.tsx — Admin Dashboard Overview
-// Lomis Field Terminal
+// Lomis Field Terminal • Republic of Malawi
 // ============================================================
 
+import AnimatedCpuNetwork from "@/components/AnimatedCpuNetwork";
 import { useAuth } from "@/contexts/AuthContext";
-import { db } from "@/lib/database";
 import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
+    Image,
     RefreshControl,
     ScrollView,
     StyleSheet,
@@ -18,92 +19,63 @@ import {
     View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Path } from "react-native-svg";
 
-interface Stats {
-    totalUsers: number;
-    activeUsers: number;
-    adminCount: number;
-    agentCount: number;
-    supervisorCount: number;
-    lastLogin: string | null;
+function ProgressArc({ percent = 78 }) {
+    const radius = 90;
+    const circumference = Math.PI * radius;
+    const dashOffset = circumference - (circumference * percent) / 100;
+
+    return (
+        <View style={arcStyles.arcContainer}>
+            <Svg width={220} height={120}>
+                <Path
+                    d="M 20,110 A 90,90 0 0,1 200,110"
+                    stroke="rgba(255,255,255,0.12)"
+                    strokeWidth={14}
+                    fill="none"
+                    strokeLinecap="round"
+                />
+                <Path
+                    d="M 20,110 A 90,90 0 0,1 200,110"
+                    stroke="#f3f7f6"
+                    strokeWidth={14}
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={dashOffset}
+                />
+            </Svg>
+            <View style={arcStyles.arcTextAbsoluteWrapper}>
+                <Text style={arcStyles.arcPercentage}>{percent}%</Text>
+                <Text style={arcStyles.arcInnerLabel}>YEAR END</Text>
+            </View>
+        </View>
+    );
 }
 
 export default function AdminDashboard() {
     const insets = useSafeAreaInsets();
-    const router = useRouter();
     const { user, logout } = useAuth();
     const [refreshing, setRefreshing] = useState(false);
-    const [stats, setStats] = useState<Stats>({
-        totalUsers: 0,
-        activeUsers: 0,
-        adminCount: 0,
-        agentCount: 0,
-        supervisorCount: 0,
-        lastLogin: null,
-    });
+    const [revenuePercent] = useState(65); // Dummy
 
-    useEffect(() => {
-        loadStats();
-    }, []);
-
-    function loadStats() {
-        try {
-            const total = db.getFirstSync<{ count: number }>(
-                "SELECT COUNT(*) as count FROM user;"
-            );
-            const active = db.getFirstSync<{ count: number }>(
-                "SELECT COUNT(*) as count FROM user WHERE is_active = 1;"
-            );
-            const admins = db.getFirstSync<{ count: number }>(
-                "SELECT COUNT(*) as count FROM user WHERE role = 'admin';"
-            );
-            const agents = db.getFirstSync<{ count: number }>(
-                "SELECT COUNT(*) as count FROM user WHERE role = 'agent';"
-            );
-            const supervisors = db.getFirstSync<{ count: number }>(
-                "SELECT COUNT(*) as count FROM user WHERE role = 'supervisor';"
-            );
-            const lastLogin = db.getFirstSync<{ last_login: string }>(
-                "SELECT MAX(last_login) as last_login FROM user WHERE last_login IS NOT NULL;"
-            );
-
-            setStats({
-                totalUsers: total?.count || 0,
-                activeUsers: active?.count || 0,
-                adminCount: admins?.count || 0,
-                agentCount: agents?.count || 0,
-                supervisorCount: supervisors?.count || 0,
-                lastLogin: lastLogin?.last_login || null,
-            });
-        } catch (error) {
-            console.error("Stats error:", error);
-        }
-    }
+    const YEAR_END_TARGET = 5000000;
+    const collectedRevenue = Math.round((revenuePercent / 100) * YEAR_END_TARGET);
 
     const onRefresh = useCallback(() => {
         setRefreshing(true);
-        loadStats();
-        // Simulate a brief delay so the refresh indicator is visible
-        setTimeout(() => {
-            setRefreshing(false);
-        }, 800);
+        setTimeout(() => setRefreshing(false), 800);
     }, []);
 
-    const statCards = [
-        { label: "Total Users", value: stats.totalUsers, icon: "people-outline" },
-        { label: "Active", value: stats.activeUsers, icon: "checkmark-circle-outline" },
-        { label: "Admins", value: stats.adminCount, icon: "shield-outline" },
-        { label: "Agents", value: stats.agentCount, icon: "person-outline" },
-    ];
-
-    // Get initials for avatar
-    const getInitials = (name: string) => {
-        return name
-            .split(" ")
-            .map(n => n[0])
-            .join("")
-            .toUpperCase()
-            .slice(0, 2);
+    const formatDate = () => {
+        const now = new Date();
+        return now.toLocaleDateString("en-GB", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+        });
     };
 
     return (
@@ -111,268 +83,238 @@ export default function AdminDashboard() {
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{
-                    paddingTop: insets.top + 20,
-                    paddingBottom: insets.bottom + 40,
-                    paddingHorizontal: 20,
+                    paddingTop: insets.top + 16,
+                    paddingBottom: 60,
                 }}
                 refreshControl={
                     <RefreshControl
                         refreshing={refreshing}
                         onRefresh={onRefresh}
-                        tintColor="rgba(255,255,255,0.6)"
+                        tintColor="#FFFFFF"
                         colors={["#5C8CE8"]}
-                        progressBackgroundColor="rgb(255, 255, 255)"
+                        progressBackgroundColor="#ffffff"
                     />
                 }
             >
-                {/* TOP BAR: Profile + Logout */}
-                <View style={styles.topBar}>
-                    <View style={styles.profileSection}>
-                        <View style={styles.avatarCircle}>
-                            <Text style={styles.avatarText}>
-                                {getInitials(user?.full_name || "Admin")}
-                            </Text>
+                {/* ═══ 1. TOP APP BAR ═══ */}
+                <View style={styles.headerRow}>
+                    <View style={styles.profileMetaBoxRow}>
+                        {/* Profile icon circle */}
+                        <View style={styles.profileBadge}>
+                            <Ionicons name="person-circle" size={38} color="#FFFFFF" />
                         </View>
-                        <View style={styles.profileInfo}>
-                            <Text style={styles.profileName}>{user?.full_name || "Administrator"}</Text>
-                            <Text style={styles.profileRole}>{user?.role?.toUpperCase()}</Text>
+                        
+                        {/* Name + Admin ID stacked span */}
+                        <View style={styles.idContextSpan}>
+                            <Text style={styles.nameText}>{user?.full_name || "Administrator"}</Text>
+                            <Text style={styles.idLabelHint}>ID: {user?.user_id || "ADM-001"}</Text>
                         </View>
                     </View>
-                    <TouchableOpacity style={styles.logoutBtn} onPress={logout} activeOpacity={0.7}>
-                        <Ionicons name="log-out-outline" size={20} color="rgba(255,255,255,0.7)" />
+
+                    {/* LOGOUT */}
+                    <TouchableOpacity
+                        style={styles.logoutBadge}
+                        activeOpacity={0.8}
+                        onPress={logout}
+                    >
+                        <Ionicons name="log-out-outline" size={22} color="#FFFFFF" />
                     </TouchableOpacity>
                 </View>
 
-                {/* STATS GRID - 2x2 Cards */}
-                <View style={styles.statsSection}>
-                    <View style={styles.statsGrid}>
-                        {statCards.map((card, index) => (
-                            <View key={index} style={styles.statCard}>
-                                <View style={styles.statTopRow}>
-                                    <View style={styles.statIconWrap}>
-                                        <Ionicons name={card.icon as any} size={18} color="rgba(255,255,255,0.6)" />
-                                    </View>
-                                </View>
-                                <Text style={styles.statValue}>{card.value}</Text>
-                                <Text style={styles.statLabel}>{card.label}</Text>
-                            </View>
-                        ))}
+                {/* ═══ 2. LOGO + GREETING ═══ */}
+                <View style={styles.logoGreetingRow}>
+                    <Image
+                        source={require("@/assets/images/malawi-government-logo.png")}
+                        style={styles.logoImage}
+                        resizeMode="contain"
+                    />
+                    <View style={styles.greetingBlock}>
+                        <Text style={styles.greetingText}>Welcome !!</Text>
+                        <Text style={styles.dateSubtitle}>{formatDate()}</Text>
                     </View>
                 </View>
 
-                {/* QUICK ACTIONS */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Quick Actions</Text>
-                    <View style={styles.actionsWrap}>
-                        <TouchableOpacity
-                            style={styles.actionCard}
-                            onPress={() => router.push("/(adminTabs)/add-roles")}
-                            activeOpacity={0.7}
-                        >
-                            <View style={styles.actionLeft}>
-                                <View style={styles.actionIcon}>
-                                    <Ionicons name="person-add-outline" size={20} color="rgba(255,255,255,0.8)" />
-                                </View>
-                                <View>
-                                    <Text style={styles.actionTitle}>Add New Role</Text>
-                                    <Text style={styles.actionDesc}>Create agent or admin accounts</Text>
-                                </View>
-                            </View>
-                            <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.25)" />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.actionCard}
-                            onPress={() => router.push("/(adminTabs)/users")}
-                            activeOpacity={0.7}
-                        >
-                            <View style={styles.actionLeft}>
-                                <View style={styles.actionIcon}>
-                                    <Ionicons name="people-outline" size={20} color="rgba(255,255,255,0.8)" />
-                                </View>
-                                <View>
-                                    <Text style={styles.actionTitle}>Manage Users</Text>
-                                    <Text style={styles.actionDesc}>View, edit or deactivate users</Text>
-                                </View>
-                            </View>
-                            <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.25)" />
-                        </TouchableOpacity>
+                {/* ═══ 3. REVENUE ARC ═══ */}
+                <BlurView intensity={20} tint="light" style={styles.targetCard}>
+                    <Text style={styles.cardSectionLabel}>FISCAL YEAR END TARGET</Text>
+                    <ProgressArc percent={revenuePercent} />
+                    <View style={styles.targetLegendGrid}>
+                        <View style={styles.legendNode}>
+                            <Text style={styles.legendLabel}>REVENUE COLLECTED</Text>
+                            <Text style={styles.legendValue}>K{collectedRevenue.toLocaleString()}</Text>
+                        </View>
+                        <View style={[styles.legendNode, styles.legendNodeBorderLeft]}>
+                            <Text style={styles.legendLabel}>YEAR END TARGET</Text>
+                            <Text style={styles.legendValueNormal}>K{YEAR_END_TARGET.toLocaleString()}</Text>
+                        </View>
                     </View>
-                </View>
+                </BlurView>
+
+                {/* ═══ 4. ANIMATED SYNC NETWORK ═══ */}
+                <AnimatedCpuNetwork />
 
             </ScrollView>
         </LinearGradient>
     );
 }
 
+const arcStyles = StyleSheet.create({
+    arcContainer: {
+        alignItems: "center",
+        justifyContent: "center",
+        marginVertical: 10,
+    },
+    arcTextAbsoluteWrapper: {
+        position: "absolute",
+        top: 55,
+        alignItems: "center",
+    },
+    arcPercentage: {
+        fontSize: 32,
+        fontWeight: "800",
+        color: "#FFFFFF",
+    },
+    arcInnerLabel: {
+        fontSize: 10,
+        fontWeight: "700",
+        color: "rgba(255,255,255,0.5)",
+        letterSpacing: 2,
+        marginTop: 2,
+    },
+});
+
 const styles = StyleSheet.create({
     container: { flex: 1 },
 
-    // Top Bar
-    topBar: {
+    // ─── Top App Bar ───
+    headerRow: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        marginBottom: 28,
+        paddingHorizontal: 16,
+        marginBottom: 8,
     },
-    profileSection: {
+    profileMetaBoxRow: {
         flexDirection: "row",
         alignItems: "center",
-        gap: 14,
+        gap: 12,
     },
-    avatarCircle: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: "rgba(255, 255, 255, 0.12)",
-        borderWidth: 1.5,
-        borderColor: "rgba(255, 255, 255, 0.2)",
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    avatarText: {
-        color: "#FFFFFF",
-        fontSize: 16,
-        fontWeight: "700",
-        letterSpacing: 0.5,
-    },
-    profileInfo: {
-        justifyContent: "center",
-    },
-    profileName: {
-        color: "#FFFFFF",
-        fontSize: 17,
-        fontWeight: "700",
-        letterSpacing: 0.2,
-    },
-    profileRole: {
-        color: "rgba(255, 255, 255, 0.45)",
-        fontSize: 11,
-        fontWeight: "600",
-        letterSpacing: 1,
-        marginTop: 2,
-    },
-    logoutBtn: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
-        backgroundColor: "rgba(255, 255, 255, 0.06)",
-        justifyContent: "center",
-        alignItems: "center",
+    profileBadge: {
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        backgroundColor: "rgba(255,255,255,0.08)",
         borderWidth: 1,
-        borderColor: "rgba(255, 255, 255, 0.1)",
-    },
-
-    // Stats Section
-    statsSection: {
-        marginBottom: 28,
-    },
-    statsGrid: {
-        flexDirection: "row",
-        flexWrap: "wrap",
-        gap: 10,
-    },
-    statCard: {
-        width: "48%",
-        backgroundColor: "rgba(255, 255, 255, 0.06)",
-        borderRadius: 20,
-        padding: 18,
-        borderWidth: 1,
-        borderColor: "rgba(255, 255, 255, 0.08)",
-    },
-    statTopRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 14,
-    },
-    statIconWrap: {
-        width: 36,
-        height: 36,
-        borderRadius: 10,
-        backgroundColor: "rgba(255, 255, 255, 0.06)",
+        borderColor: "rgba(255,255,255,0.1)",
         justifyContent: "center",
         alignItems: "center",
     },
-    statValue: {
-        color: "#FFFFFF",
-        fontSize: 28,
-        fontWeight: "700",
-    },
-    statLabel: {
-        color: "rgba(255, 255, 255, 0.4)",
-        fontSize: 12,
-        fontWeight: "500",
-        marginTop: 4,
-        letterSpacing: 0.3,
-    },
-
-    // Section
-    section: {
-        marginBottom: 24,
-    },
-    sectionTitle: {
-        color: "rgba(255, 255, 255, 0.5)",
-        fontSize: 13,
-        fontWeight: "600",
-        letterSpacing: 0.5,
-        marginBottom: 14,
-    },
-
-    // Actions
-    actionsWrap: {
-        gap: 10,
-    },
-    actionCard: {
-        backgroundColor: "rgba(255, 255, 255, 0.06)",
-        borderRadius: 16,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: "rgba(255, 255, 255, 0.08)",
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-    },
-    actionLeft: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 14,
-    },
-    actionIcon: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
-        backgroundColor: "rgba(255, 255, 255, 0.08)",
+    idContextSpan: {
         justifyContent: "center",
-        alignItems: "center",
     },
-    actionTitle: {
-        color: "#FFFFFF",
+    nameText: {
         fontSize: 15,
-        fontWeight: "600",
-        letterSpacing: 0.2,
+        fontWeight: "700",
+        color: "#FFFFFF",
+        marginBottom: 2,
     },
-    actionDesc: {
-        color: "rgba(255, 255, 255, 0.4)",
-        fontSize: 12,
-        fontWeight: "400",
-        marginTop: 2,
+    idLabelHint: {
+        fontSize: 10,
+        fontWeight: "600",
+        color: "rgba(255,255,255,0.4)",
+        letterSpacing: 0.5,
+    },
+    logoutBadge: {
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        backgroundColor: "rgba(255,255,255,0.08)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.1)",
+        justifyContent: "center",
+        alignItems: "center",
     },
 
-    // Info Card
-    infoCard: {
+    // ─── Logo + Greeting ───
+    logoGreetingRow: {
         flexDirection: "row",
         alignItems: "center",
-        gap: 8,
-        backgroundColor: "rgba(255, 255, 255, 0.04)",
-        borderRadius: 12,
-        padding: 12,
-        borderWidth: 1,
-        borderColor: "rgba(255, 255, 255, 0.06)",
+        paddingHorizontal: 16,
+        marginTop: 16,
+        marginBottom: 20,
     },
-    infoText: {
-        color: "rgba(255, 255, 255, 0.3)",
-        fontSize: 12,
-        fontWeight: "400",
+    logoImage: {
+        width: 90,
+        height: 90,
+        resizeMode: "contain",
+    },
+    greetingBlock: {
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        marginRight: 50,
+    },
+    greetingText: {
+        fontSize: 24,
+        fontWeight: "800",
+        color: "#FFFFFF",
+        letterSpacing: 0.5,
+    },
+    dateSubtitle: {
+        fontSize: 13,
+        fontWeight: "500",
+        color: "rgba(255,255,255,0.45)",
+        marginTop: 4,
+    },
+
+    // ─── Target Card ───
+    targetCard: {
+        marginHorizontal: 16,
+        borderRadius: 24,
+        padding: 20,
+        overflow: "hidden",
+        backgroundColor: "rgba(255,255,255,0.06)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.08)",
+    },
+    cardSectionLabel: {
+        fontSize: 10,
+        fontWeight: "800",
+        color: "rgba(255,255,255,0.35)",
+        letterSpacing: 2,
+        textAlign: "center",
+        marginBottom: 8,
+    },
+    targetLegendGrid: {
+        flexDirection: "row",
+        marginTop: 16,
+        paddingTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: "rgba(255,255,255,0.08)",
+    },
+    legendNode: {
+        flex: 1,
+        alignItems: "center",
+    },
+    legendNodeBorderLeft: {
+        borderLeftWidth: 1,
+        borderLeftColor: "rgba(255,255,255,0.08)",
+    },
+    legendLabel: {
+        fontSize: 9,
+        fontWeight: "700",
+        color: "rgba(255,255,255,0.35)",
+        letterSpacing: 1.5,
+        marginBottom: 4,
+    },
+    legendValue: {
+        fontSize: 20,
+        fontWeight: "800",
+        color: "#FFFFFF",
+    },
+    legendValueNormal: {
+        fontSize: 20,
+        fontWeight: "700",
+        color: "rgba(255,255,255,0.6)",
     },
 });

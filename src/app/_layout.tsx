@@ -6,7 +6,6 @@
 import { AuthProvider } from "@/contexts/AuthContext";
 import { db, initializeDatabase } from "@/lib/database";
 import { initializeBusinessTables } from "@/lib/database-business";
-import { seedAdminUser } from "@/lib/seed-admin";
 import { useDrizzleStudio } from "expo-drizzle-studio-plugin";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";

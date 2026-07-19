@@ -3,23 +3,79 @@ import styles from "@/styles/settingsStyle";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
+import { useEffect, useState } from "react";
 import {
     ScrollView,
     Text,
     View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
- const width = SCREEN_WIDTH
+import { getSyncStatus, isAutoSyncRunning } from "@/lib/sync-engine";
+import NetInfo from "@react-native-community/netinfo";
+
+const width = SCREEN_WIDTH;
+
+type SyncStatus = "active" | "low-network" | "down";
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
 
-  // Network & Device Diagnostics Parameters
-  const networkDiagnostics = {
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("active");
+  const [networkDiagnostics, setNetworkDiagnostics] = useState({
     configuredState: "Yes",
     terminalId: "MPOS-MALAWI-992A",
     appVersion: "v4.2.1-prod",
+  });
+
+  // Monitor sync and network status
+  useEffect(() => {
+    const checkStatus = async () => {
+      const netInfo = await NetInfo.fetch();
+      const syncState = getSyncStatus();
+      const isRunning = isAutoSyncRunning();
+
+      // Priority: sync engine down > low network > active
+      if (!isRunning || syncState.failed > 10) {
+        setSyncStatus("down");
+      } else if (!netInfo.isConnected || (netInfo as any).isConnectionExpensive || (netInfo.details as any)?.strength < 2) {
+        setSyncStatus("low-network");
+      } else {
+        setSyncStatus("active");
+      }
+    };
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 3000); // Check every 3s
+    return () => clearInterval(interval);
+  }, []);
+
+  const getStatusConfig = (status: SyncStatus) => {
+    switch (status) {
+      case "active":
+        return {
+          dotColor: "#22c55e", // Green
+          text: "ACTIVE",
+          subText: "Background sync healthy",
+          icon: "checkmark-circle",
+        };
+      case "low-network":
+        return {
+          dotColor: "#eab308", // Yellow
+          text: "LOW NETWORK",
+          subText: "Sync delayed — weak connection",
+          icon: "warning",
+        };
+      case "down":
+        return {
+          dotColor: "#ef4444", // Red
+          text: "SYNC DOWN",
+          subText: "Background sync stopped",
+          icon: "close-circle",
+        };
+    }
   };
+
+  const statusConfig = getStatusConfig(syncStatus);
 
   return (
     <LinearGradient
@@ -36,20 +92,29 @@ export default function ProfileScreen() {
         {/* 1. TOP BAR ACTION TITLE */}
         <View style={styles.topBarRow}>
           <Text style={styles.screenHeaderTitle}>Settings</Text>
-            <Ionicons name="settings-outline" size={22} color="#FFFFFF" />
+          <Ionicons name="settings-outline" size={22} color="#FFFFFF" />
         </View>
 
         {/* 2. SERVER CONNECTION MATRIX */}
         <Text style={styles.sectionLabelTitle}>Server Infrastructure Matrix</Text>
         <BlurView intensity={20} tint="light" style={styles.glassProfileCard}>
+          
+          {/* System Connection — Dynamic Sync Status */}
           <View style={styles.metricDataRow}>
             <View style={styles.iconMetadataLabelGroup}>
               <Ionicons name="server" size={18} color="#fafdfd" />
-              <Text style={styles.clusterFieldLabel}>System Connection</Text>
+              <View>
+                <Text style={styles.clusterFieldLabel}>System Connection</Text>
+                <Text style={[styles.statusSubText, { color: statusConfig.dotColor }]}>
+                  {statusConfig.subText}
+                </Text>
+              </View>
             </View>
-            <View style={styles.statusPillBadgeRow}>
-              <View style={styles.greenDotIndicator} />
-              <Text style={styles.statusPillBadgeText}>ACTIVE</Text>
+            <View style={[styles.statusPillBadgeRow, { backgroundColor: `${statusConfig.dotColor}20` }]}>
+              <View style={[styles.statusDot, { backgroundColor: statusConfig.dotColor }]} />
+              <Text style={[styles.statusPillBadgeText, { color: statusConfig.dotColor }]}>
+                {statusConfig.text}
+              </Text>
             </View>
           </View>
 
@@ -62,8 +127,6 @@ export default function ProfileScreen() {
             </View>
             <Text style={styles.clusterFieldValue}>{networkDiagnostics.configuredState}</Text>
           </View>
-
-          <View style={styles.horizontalRowDivider} />
         </BlurView>
 
         {/* 3. PERIPHERAL HARDWARE DIAGNOSTICS */}
