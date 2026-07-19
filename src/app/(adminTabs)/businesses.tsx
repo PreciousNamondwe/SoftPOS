@@ -126,7 +126,7 @@ export default function BusinessesScreen() {
   const [date, setDate] = useState(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
 
-  const onChange = (event: any, selectedDate?: Date | undefined) => {
+  const onChange = (event, selectedDate) => {
     // Android dismisses the picker immediately on backdrop press/cancel
     if (Platform.OS === 'android') {
       setShowCalendar(false);
@@ -153,7 +153,7 @@ export default function BusinessesScreen() {
   };
 
   // Helper to format the date display neatly
-  const formatDate = (currentDate: Date) => {
+  const formatDate = (currentDate) => {
     return currentDate.toLocaleDateString('en-GB', {
       day: '2-digit',
       month: 'short',
@@ -1049,6 +1049,7 @@ export default function BusinessesScreen() {
                   placeholderTextColor="#999999"
                   value={ownerNationalId}
                   onChangeText={setOwnerNationalId}
+                  autoCapitalize="words"
                 />
               </View>
 
