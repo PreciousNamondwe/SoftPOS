@@ -4,9 +4,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import {
-  ScrollView,
-  Text,
-  View
+    ScrollView,
+    Text,
+    View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
  const width = SCREEN_WIDTH
@@ -101,7 +101,6 @@ export default function ProfileScreen() {
           </View>
         </BlurView>
 
-       
       </ScrollView>
     </LinearGradient>
   );

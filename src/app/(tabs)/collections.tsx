@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as SQLite from "expo-sqlite";
 
 // Open or initialize the target database file on device storage instantly
-const db = SQLite.openDatabaseSync("lomis.db");
+const db = SQLite.openDatabaseSync("lormis.db");
 
 // Strict Type Declaration Mapping for TypeScript Safety
 interface BusinessType {
