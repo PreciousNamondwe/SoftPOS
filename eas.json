@@ -11,12 +11,14 @@
     "preview": {
       "channel": "preview",
       "distribution": "internal",
+      "installCommand": "npm install --legacy-peer-deps",
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
       "channel": "production",
+      "installCommand": "npm install --legacy-peer-deps",
       "autoIncrement": true,
       "android": {
         "buildType": "apk"
