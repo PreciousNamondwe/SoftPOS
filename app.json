@@ -49,6 +49,13 @@
       "eas": {
         "projectId": "72904671-b616-44c9-9a10-0d8435b92c30"
       }
+    },
+    "owner": "pzwa",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/72904671-b616-44c9-9a10-0d8435b92c30"
     }
   }
 }
