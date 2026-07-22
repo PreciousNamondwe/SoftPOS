@@ -17,11 +17,6 @@ useEffect(() => {
         try {
             initializeDatabase(); // Sync: creates tables + roles
             await initializeBusinessTables(); // Async: creates business-specific tables
-            // const seedResult = await seedAdminUser();
-            //     if (seedResult.success) {
-            //         console.log("🌱", seedResult.message);
-            //     }
-
         } catch (error) {
             console.error("❌ Failed to initialize database:", error);
         }

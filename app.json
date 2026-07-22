@@ -9,7 +9,16 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.anonymous.SoftPOS"
+      "bundleIdentifier": "com.anonymous.SoftPOS",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "fetch",
+          "processing"
+        ],
+        "BGTaskSchedulerPermittedIdentifiers": [
+          "com.expo.modules.backgroundtask.processing"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +28,12 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.SoftPOS"
+      "package": "com.anonymous.SoftPOS",
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "WAKE_LOCK",
+        "FOREGROUND_SERVICE"
+      ]
     },
     "web": {
       "output": "static",
@@ -38,7 +52,19 @@
         }
       ],
       "expo-sqlite",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-background-task",
+        {}
+      ],
+      [
+        "expo-background-fetch",
+        {
+          "android": {
+            "minInterval": 15
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

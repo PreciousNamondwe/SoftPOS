@@ -1,6 +1,7 @@
 // ============================================================
-// contexts/AuthContext.tsx — Global Auth State & Auto-Init (FIXED)
-// Lomis Field Terminal — with is_deleted soft-delete migration
+// contexts/AuthContext.tsx — API-First Login + SQLite Seeding
+// Lomis Field Terminal — Seeds API user data to local SQLite
+// + Background Sync (expo-background-task + expo-background-fetch)
 // ============================================================
 
 import { comparePassword } from "@/lib/bcrypt";
@@ -15,6 +16,11 @@ import {
 import { initializeBusinessTables, migrateBusinessTables } from "@/lib/database-business";
 import { seedAdminUser } from "@/lib/seed-admin";
 import { getSyncStatus, performFullSync, startAutoSync } from "@/lib/sync-engine";
+// 🔧 BACKGROUND SYNC IMPORTS
+import {
+  registerBackgroundSync,
+  unregisterBackgroundSync
+} from "@/lib/background-sync";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as LocalAuthentication from "expo-local-authentication";
 import { useRouter } from "expo-router";
@@ -31,6 +37,19 @@ interface User {
   last_login: string | null;
 }
 
+interface ApiLoginResponse {
+  success: boolean;
+  user?: {
+    id: number;
+    user_id: string;
+    full_name: string;
+    role: string;
+    is_active: number;
+  };
+  token?: string;
+  message: string;
+}
+
 interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -39,6 +58,8 @@ interface AuthState {
   biometricEnabled: boolean;
   isSyncing: boolean;
   syncStatus: { pending: number; failed: number; lastSync: string | null } | null;
+  authMode: "api" | "local" | null;
+  isBackgroundSyncActive: boolean;
 }
 
 interface AuthContextType extends AuthState {
@@ -49,11 +70,17 @@ interface AuthContextType extends AuthState {
   checkNetwork: () => Promise<boolean>;
   syncNow: () => Promise<{ success: boolean; message: string }>;
   getCurrentSyncStatus: () => { pending: number; failed: number; lastSync: string | null };
+  toggleBackgroundSync: (enabled: boolean) => Promise<void>;
 }
 
 // ─── Context ───────────────────────────────────────────────
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// ─── API Config ──────────────────────────────────────────────
+
+const API_BASE_URL = "https://go-revenue-pos.vercel.app";
+const API_TIMEOUT = 8000;
 
 // ─── Provider ──────────────────────────────────────────────
 
@@ -67,45 +94,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     biometricEnabled: false,
     isSyncing: false,
     syncStatus: null,
+    authMode: null,
+    isBackgroundSyncActive: false,
   });
 
-  // ─── 1. AUTO-INITIALIZE DATABASE ON APP START ───────────
+  // ─── 1. AUTO-INITIALIZE DATABASE + BACKGROUND SYNC ──────
   useEffect(() => {
     async function init() {
       try {
         console.log("🔄 [AuthContext] Initializing database...");
         initializeDatabase();
         initializeBusinessTables();
-
-        // ✅ Migrate is_deleted columns for existing databases
         migrateAddIsDeleted();
         migrateBusinessTables();
-        console.log("✅ [AuthContext] is_deleted migration complete.");
+        console.log("✅ [AuthContext] Database ready.");
 
         const seedResult = await seedAdminUser();
         if (seedResult.success) {
           console.log("🌱 [AuthContext]", seedResult.message);
         }
 
-        const sessionToken = await AsyncStorage.getItem("@lomis:session_token");
+        const networkAvailable = await checkNetworkStatus();
+        setState(prev => ({ ...prev, isOffline: !networkAvailable }));
+
+        // 🔧 REGISTER BACKGROUND SYNC — runs even if user is logged out
+        const bgActive = await registerBackgroundSync();
+        setState(prev => ({ ...prev, isBackgroundSyncActive: bgActive }));
+        if (bgActive) {
+          console.log("✅ [AuthContext] Background sync registered");
+        }
+
+        // Try API session restoration first
+        const apiToken = await AsyncStorage.getItem("@lomis:api_token");
         const savedUserId = await AsyncStorage.getItem("@lomis:last_user_id");
         const biometricFlag = await AsyncStorage.getItem("@lomis:biometric_enabled");
 
-        if (sessionToken && savedUserId) {
-          const user = getUserById(savedUserId);
-          if (user) {
+        if (apiToken && networkAvailable) {
+          const apiUser = await validateApiToken(apiToken);
+          if (apiUser) {
             setState(prev => ({
               ...prev,
               isAuthenticated: true,
-              user: user as User,
+              user: apiUser,
+              authMode: "api",
               biometricEnabled: biometricFlag === "true",
             }));
-            console.log("✅ [AuthContext] Restored session for", savedUserId);
+            console.log("✅ [AuthContext] API session restored for", apiUser.user_id);
+            startAutoSync({
+              apiBaseUrl: API_BASE_URL,
+              authToken: apiToken,
+              batchSize: 100,
+            }, 5);
+          } else {
+            await tryLocalFallback(savedUserId, biometricFlag);
           }
+        } else if (savedUserId) {
+          await tryLocalFallback(savedUserId, biometricFlag);
         }
-
-        const networkAvailable = await checkNetworkStatus();
-        setState(prev => ({ ...prev, isOffline: !networkAvailable }));
 
         const syncStatus = getSyncStatus();
         setState(prev => ({ ...prev, syncStatus }));
@@ -130,35 +175,198 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return { ...prev, isOffline: !available };
       });
-    }, 10000);
+    }, 15000);
 
     return () => clearInterval(interval);
   }, []);
 
   async function checkNetworkStatus(): Promise<boolean> {
     try {
-      const response = await fetch("https://www.google.com/generate_204", {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      const response = await fetch(`${API_BASE_URL}/api/health`, {
         method: "HEAD",
-        signal: AbortSignal.timeout(3000),
+        signal: controller.signal,
       });
-      return response.status === 204;
+      clearTimeout(timeout);
+      return response.ok;
     } catch {
       return false;
     }
   }
 
-  // ─── 3. LOGIN ───────────────────────────────────────────
+  async function validateApiToken(token: string): Promise<User | null> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) return null;
+
+      const data = await response.json();
+      if (!data.success || !data.user) return null;
+
+      return {
+        id: data.user.id,
+        user_id: data.user.user_id,
+        full_name: data.user.full_name,
+        role: data.user.role,
+        is_active: data.user.is_active,
+        last_login: null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async function tryLocalFallback(savedUserId: string | null, biometricFlag: string | null) {
+    if (!savedUserId) return;
+
+    const localToken = await AsyncStorage.getItem("@lomis:session_token");
+    if (!localToken) return;
+
+    const user = getUserById(savedUserId);
+    if (user && user.is_active === 1) {
+      setState(prev => ({
+        ...prev,
+        isAuthenticated: true,
+        user: user as User,
+        authMode: "local",
+        biometricEnabled: biometricFlag === "true",
+      }));
+      console.log("✅ [AuthContext] Local session restored for", savedUserId);
+    }
+  }
+
+  // ─── 3. LOGIN — API FIRST, SEED TO SQLITE, LOCAL FALLBACK ─
   const login = useCallback(async (userId: string, pin: string) => {
     if (!userId.trim() || !pin.trim()) {
       return { success: false, message: "Please enter both User ID and PIN." };
     }
 
+    const normalizedId = userId.trim().toUpperCase();
+
     try {
-      const normalizedId = userId.trim().toUpperCase();
-      const user = getUserById(normalizedId);
+      const networkAvailable = await checkNetworkStatus();
+
+      if (networkAvailable) {
+        console.log("🌐 [AuthContext] Trying API login...");
+
+        const apiResult = await attemptApiLogin(normalizedId, pin);
+
+        if (apiResult.success && apiResult.token && apiResult.user) {
+          console.log("🌐 [AuthContext] API login OK. Seeding to SQLite...");
+
+          const seedResult = await seedApiUserToLocal({
+            user_id: apiResult.user.user_id,
+            full_name: apiResult.user.full_name,
+            role: apiResult.user.role,
+            pin: pin.trim(),
+            is_active: apiResult.user.is_active,
+          });
+
+          if (!seedResult.success) {
+            console.warn("⚠️ [AuthContext] Failed to seed user locally:", seedResult.message);
+          } else {
+            console.log("✅ [AuthContext] User seeded to SQLite:", apiResult.user.user_id);
+          }
+
+          // Store tokens
+          await AsyncStorage.setItem("@lomis:api_token", apiResult.token);
+          await AsyncStorage.setItem("@lomis:last_user_id", apiResult.user.user_id);
+
+          const localToken = `lomis_${apiResult.user.user_id}_${Date.now()}`;
+          await AsyncStorage.setItem("@lomis:session_token", localToken);
+
+          setState(prev => ({
+            ...prev,
+            isAuthenticated: true,
+            user: apiResult.user as User,
+            authMode: "api",
+            isOffline: false,
+          }));
+
+          logAudit(apiResult.user.user_id, "login_success", { method: "api", offline: false });
+          console.log("✅ [AuthContext] API login success:", apiResult.user.user_id);
+
+          console.log("🔄 [AuthContext] Starting post-login sync...");
+          const syncResult = await runPostLoginSync(apiResult.token);
+
+          if (syncResult.success) {
+            console.log("✅ [AuthContext] Post-login sync complete.");
+          } else {
+            console.warn("⚠️ [AuthContext] Sync issues:", syncResult.message);
+          }
+
+          startAutoSync({
+            apiBaseUrl: API_BASE_URL,
+            authToken: apiResult.token,
+            batchSize: 100,
+          }, 5);
+
+          return { success: true, message: "Login successful." };
+        }
+
+        if (apiResult.message && !apiResult.message.includes("offline")) {
+          logAudit(normalizedId, "login_failed", { reason: "api_rejected", message: apiResult.message });
+          return { success: false, message: apiResult.message };
+        }
+      }
+
+      // Offline fallback
+      console.log("📴 [AuthContext] Offline. Trying local login...");
+      return await attemptLocalLogin(normalizedId, pin);
+
+    } catch (error) {
+      console.error("❌ [AuthContext] Login error:", error);
+      return await attemptLocalLogin(normalizedId, pin);
+    }
+  }, []);
+
+  async function attemptApiLogin(userId: string, pin: string): Promise<ApiLoginResponse> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), API_TIMEOUT);
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, pin }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return { success: false, message: data.message || "Invalid credentials." };
+      }
+
+      return {
+        success: true,
+        user: data.user,
+        token: data.token || data.user?.user_id,
+        message: data.message || "Login successful.",
+      };
+    } catch (error: any) {
+      if (error.name === "AbortError") {
+        return { success: false, message: "API timeout. Trying offline..." };
+      }
+      return { success: false, message: "API unreachable. Trying offline..." };
+    }
+  }
+
+  async function attemptLocalLogin(userId: string, pin: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const user = getUserById(userId);
 
       if (!user) {
-        logAudit(normalizedId, "login_failed", { reason: "user_not_found" });
+        logAudit(userId, "login_failed", { reason: "user_not_found", mode: "local" });
         return { success: false, message: "User ID not found." };
       }
 
@@ -168,7 +376,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const isValid = await verifyPin(pin, user.pin_hash);
       if (!isValid) {
-        logAudit(user.user_id, "login_failed", { reason: "invalid_pin" });
+        logAudit(user.user_id, "login_failed", { reason: "invalid_pin", mode: "local" });
         return { success: false, message: "Invalid PIN." };
       }
 
@@ -177,36 +385,138 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       expiresAt.setHours(expiresAt.getHours() + 24);
       createSession(user.user_id, null, expiresAt.toISOString(), true);
 
-      // ✅ FIXED: Use a consistent token format
-      const token = `lomis_${user.user_id}_${Date.now()}`;
+      const localToken = `lomis_${user.user_id}_${Date.now()}`;
       await AsyncStorage.setItem("@lomis:last_user_id", user.user_id);
-      await AsyncStorage.setItem("@lomis:session_token", token);
+      await AsyncStorage.setItem("@lomis:session_token", localToken);
 
-      logAudit(user.user_id, "login_success", { method: "pin", offline: true });
+      logAudit(user.user_id, "login_success", { method: "pin", mode: "local", offline: true });
 
       setState(prev => ({
         ...prev,
         isAuthenticated: true,
         user: user as User,
+        authMode: "local",
+        isOffline: true,
       }));
 
-      // ✅ FIXED: Start auto-sync with correct API URL
-      const apiUrl = await AsyncStorage.getItem("@lomis:api_url") || "https://go-revenue-pos.vercel.app";
-      console.log("🔄 [AuthContext] Starting auto-sync to:", apiUrl);
-      startAutoSync({
-        apiBaseUrl: apiUrl,
-        authToken: token,
-        batchSize: 100,
-      }, 5);
-
-      console.log("✅ [AuthContext] Login success:", user.user_id);
-      return { success: true, message: "Login successful." };
+      console.log("✅ [AuthContext] Local login success:", user.user_id);
+      return { success: true, message: "Offline login successful." };
 
     } catch (error) {
-      console.error("❌ [AuthContext] Login error:", error);
-      return { success: false, message: "An error occurred. Please try again." };
+      console.error("❌ [AuthContext] Local login error:", error);
+      return { success: false, message: "Login failed. Please try again." };
     }
-  }, []);
+  }
+
+  /**
+   * 🔑 Seed API user data into local SQLite for offline login
+   */
+  async function seedApiUserToLocal(apiUser: {
+    user_id: string;
+    full_name: string;
+    role: string;
+    pin: string;
+    is_active: number;
+  }): Promise<{ success: boolean; message: string }> {
+    try {
+      const { db } = require("@/lib/database") as typeof import("@/lib/database");
+      const { hashPassword } = require("@/lib/bcrypt") as typeof import("@/lib/bcrypt");
+
+      // 1. Ensure the user's role exists in roles table
+      const roleExists = db.getFirstSync<{ count: number }>(
+        "SELECT COUNT(*) as count FROM roles WHERE role_key = ?;",
+        [apiUser.role]
+      );
+
+      if (!roleExists || roleExists.count === 0) {
+        db.runSync(
+          `INSERT INTO roles (role_key, role_label, color, is_synced)
+           VALUES (?, ?, ?, 1)
+           ON CONFLICT(role_key) DO NOTHING;`,
+          [apiUser.role, apiUser.role.charAt(0).toUpperCase() + apiUser.role.slice(1), "#5C8CE8"]
+        );
+        console.log("🌱 [AuthContext] Seeded role:", apiUser.role);
+      }
+
+      // 2. Hash the PIN for local storage
+      const pinHash = await hashPassword(apiUser.pin);
+
+      // 3. Upsert user into local SQLite
+      const existingUser = db.getFirstSync<{ id: number }>(
+        "SELECT id FROM user WHERE user_id = ?;",
+        [apiUser.user_id.toUpperCase()]
+      );
+
+      if (existingUser) {
+        db.runSync(
+          `UPDATE user 
+           SET full_name = ?, role = ?, pin_hash = ?, is_active = ?, 
+               is_synced = 1, updated_at = datetime('now')
+           WHERE user_id = ?;`,
+          [
+            apiUser.full_name,
+            apiUser.role,
+            pinHash,
+            apiUser.is_active,
+            apiUser.user_id.toUpperCase(),
+          ]
+        );
+        console.log("🔄 [AuthContext] Updated local user:", apiUser.user_id);
+      } else {
+        db.runSync(
+          `INSERT INTO user (user_id, full_name, role, pin_hash, is_active, is_synced, created_at)
+           VALUES (?, ?, ?, ?, ?, 1, datetime('now'));`,
+          [
+            apiUser.user_id.toUpperCase(),
+            apiUser.full_name,
+            apiUser.role,
+            pinHash,
+            apiUser.is_active,
+          ]
+        );
+        console.log("✅ [AuthContext] Inserted local user:", apiUser.user_id);
+      }
+
+      return { success: true, message: `User "${apiUser.user_id}" seeded to local DB.` };
+    } catch (error: any) {
+      console.error("❌ [AuthContext] Seed user error:", error.message);
+      return { success: false, message: `Seed failed: ${error.message}` };
+    }
+  }
+
+  async function runPostLoginSync(token: string): Promise<{ success: boolean; message: string }> {
+    try {
+      setState(prev => ({ ...prev, isSyncing: true }));
+
+      const results = await performFullSync({
+        apiBaseUrl: API_BASE_URL,
+        authToken: token,
+        batchSize: 100,
+      });
+
+      const totalPushed = results.reduce((sum, r) => sum + r.pushed, 0);
+      const totalPulled = results.reduce((sum, r) => sum + r.pulled, 0);
+      const errors = results.flatMap(r => r.errors);
+
+      const syncStatus = getSyncStatus();
+      setState(prev => ({ ...prev, syncStatus, isSyncing: false }));
+
+      if (errors.length > 0) {
+        console.warn("⚠️ [AuthContext] Sync completed with errors:", errors);
+      }
+
+      console.log(`✅ [AuthContext] Post-login sync: ↑${totalPushed} ↓${totalPulled}`);
+
+      return {
+        success: true,
+        message: `Synced: ${totalPushed} pushed, ${totalPulled} pulled`,
+      };
+    } catch (error: any) {
+      setState(prev => ({ ...prev, isSyncing: false }));
+      console.error("❌ [AuthContext] Post-login sync failed:", error.message);
+      return { success: false, message: `Sync failed: ${error.message}` };
+    }
+  }
 
   // ─── 4. BIOMETRIC LOGIN ─────────────────────────────────
   const biometricLogin = useCallback(async () => {
@@ -225,6 +535,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: false, message: "Biometric authentication failed." };
       }
 
+      const apiToken = await AsyncStorage.getItem("@lomis:api_token");
+      const networkAvailable = await checkNetworkStatus();
+
+      if (apiToken && networkAvailable) {
+        const apiUser = await validateApiToken(apiToken);
+        if (apiUser) {
+          setState(prev => ({
+            ...prev,
+            isAuthenticated: true,
+            user: apiUser,
+            authMode: "api",
+            isOffline: false,
+          }));
+          logAudit(apiUser.user_id, "login_success", { method: "biometric", mode: "api" });
+          return { success: true, message: "Biometric login successful." };
+        }
+      }
+
       const user = getUserById(savedUserId);
       if (!user || user.is_active !== 1) {
         return { success: false, message: "Account not found or deactivated." };
@@ -235,26 +563,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       expiresAt.setHours(expiresAt.getHours() + 24);
       createSession(user.user_id, null, expiresAt.toISOString(), true);
 
-      const token = `lomis_${user.user_id}_${Date.now()}`;
-      await AsyncStorage.setItem("@lomis:session_token", token);
-      logAudit(user.user_id, "login_success", { method: "biometric", offline: true });
+      const localToken = `lomis_${user.user_id}_${Date.now()}`;
+      await AsyncStorage.setItem("@lomis:session_token", localToken);
+      logAudit(user.user_id, "login_success", { method: "biometric", mode: "local", offline: true });
 
       setState(prev => ({
         ...prev,
         isAuthenticated: true,
         user: user as User,
+        authMode: "local",
       }));
 
-      // ✅ FIXED: Start auto-sync with correct API URL
-      const apiUrl = await AsyncStorage.getItem("@lomis:api_url") || "https://go-revenue-pos.vercel.app";
-      console.log("🔄 [AuthContext] Starting auto-sync to:", apiUrl);
-      startAutoSync({
-        apiBaseUrl: apiUrl,
-        authToken: token,
-        batchSize: 100,
-      }, 5);
-
-      return { success: true, message: "Biometric login successful." };
+      return { success: true, message: "Biometric login successful (offline)." };
 
     } catch (error) {
       console.error("❌ [AuthContext] Biometric error:", error);
@@ -262,25 +582,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // ─── 5. LOGOUT ──────────────────────────────────────────
+  // ─── 5. LOGOUT — PRESERVES API TOKEN FOR BACKGROUND SYNC ─
   const logout = useCallback(async () => {
     if (state.user) {
-      logAudit(state.user.user_id, "logout", {});
+      logAudit(state.user.user_id, "logout", { mode: state.authMode });
     }
+
+    if (state.authMode === "api") {
+      try {
+        const apiToken = await AsyncStorage.getItem("@lomis:api_token");
+        if (apiToken) {
+          await fetch(`${API_BASE_URL}/api/auth/logout`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${apiToken}` },
+          });
+        }
+      } catch (e) {
+        console.warn("⚠️ [AuthContext] API logout failed:", e);
+      }
+    }
+
+    // 🔧 PRESERVE api_token so background sync can still run after logout
     await AsyncStorage.multiRemove([
       "@lomis:session_token",
       "@lomis:last_user_id",
       "@lomis:biometric_enabled",
     ]);
+
+    // NOTE: @lomis:api_token is NOT removed — background sync needs it
+
     setState(prev => ({
       ...prev,
       isAuthenticated: false,
       user: null,
+      authMode: null,
       biometricEnabled: false,
     }));
-    console.log("👋 [AuthContext] Logged out");
+
+    console.log("👋 [AuthContext] Logged out (API token preserved for background sync)");
     router.replace("/");
-  }, [state.user, router]);
+  }, [state.user, state.authMode, router]);
 
   // ─── 6. TOGGLE BIOMETRIC ────────────────────────────────
   const toggleBiometric = useCallback(async (enabled: boolean) => {
@@ -305,16 +646,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setState(prev => ({ ...prev, isSyncing: true }));
 
-      const token = await AsyncStorage.getItem("@lomis:session_token");
+      const token = await AsyncStorage.getItem("@lomis:api_token");
       if (!token) {
-        return { success: false, message: "Not authenticated. Please log in." };
+        setState(prev => ({ ...prev, isSyncing: false }));
+        return { success: false, message: "Not authenticated with API. Login online first." };
       }
 
-      const apiUrl = await AsyncStorage.getItem("@lomis:api_url") || "https://go-revenue-pos.vercel.app";
-      console.log("🔄 [AuthContext] Manual sync to:", apiUrl);
+      console.log("🔄 [AuthContext] Manual sync to:", API_BASE_URL);
 
       const results = await performFullSync({
-        apiBaseUrl: apiUrl,
+        apiBaseUrl: API_BASE_URL,
         authToken: token,
         batchSize: 100,
       });
@@ -324,7 +665,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const errors = results.flatMap(r => r.errors);
 
       const syncStatus = getSyncStatus();
-      setState(prev => ({ ...prev, syncStatus }));
+      setState(prev => ({ ...prev, syncStatus, isSyncing: false }));
 
       if (errors.length > 0) {
         console.warn("⚠️ [AuthContext] Sync completed with errors:", errors);
@@ -337,16 +678,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         message: `Synced: ${totalPushed} pushed, ${totalPulled} pulled${errors.length > 0 ? ` (${errors.length} errors)` : ""}`,
       };
     } catch (error: any) {
+      setState(prev => ({ ...prev, isSyncing: false }));
       console.error("❌ [AuthContext] Sync failed:", error.message);
       return { success: false, message: `Sync failed: ${error.message}` };
-    } finally {
-      setState(prev => ({ ...prev, isSyncing: false }));
     }
   }, [state.isSyncing]);
 
   // ─── 9. GET SYNC STATUS ─────────────────────────────────
   const getCurrentSyncStatus = useCallback(() => {
     return getSyncStatus();
+  }, []);
+
+  // ─── 10. TOGGLE BACKGROUND SYNC ─────────────────────────
+  const toggleBackgroundSync = useCallback(async (enabled: boolean) => {
+    try {
+      if (enabled) {
+        const registered = await registerBackgroundSync();
+        setState(prev => ({ ...prev, isBackgroundSyncActive: registered }));
+        console.log("✅ [AuthContext] Background sync enabled");
+      } else {
+        await unregisterBackgroundSync();
+        setState(prev => ({ ...prev, isBackgroundSyncActive: false }));
+        console.log("🛑 [AuthContext] Background sync disabled");
+      }
+    } catch (error: any) {
+      console.error("❌ [AuthContext] Toggle background sync failed:", error.message);
+    }
   }, []);
 
   return (
@@ -360,6 +717,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         checkNetwork,
         syncNow,
         getCurrentSyncStatus,
+        toggleBackgroundSync,
       }}
     >
       {children}

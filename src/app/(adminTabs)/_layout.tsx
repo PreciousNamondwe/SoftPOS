@@ -44,7 +44,7 @@ export default function TabLayout() {
             right: 20,
             height: 80,
             borderRadius: 20,
-            backgroundColor: "rgba(21, 63, 179, 0.94)",
+            backgroundColor: "rgba(87, 122, 218, 0.94)",
             borderTopWidth: 0,
             overflow: "hidden",
           },
