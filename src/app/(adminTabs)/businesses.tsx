@@ -1,8 +1,9 @@
 // ============================================================
-// app/(adminTabs)/businesses.tsx — Business Management
-// Lomis Field Terminal
+// app/(adminTabs)/businesses.tsx — Business Management (Fixed)
+// Uses CustomBottomSheet to avoid FlatList inside ScrollView
 // ============================================================
 
+import CustomBottomSheet, { SheetActionButtons } from "@/components/CustomBottomSheet";
 import {
   addBusiness,
   addBusinessOwner,
@@ -26,17 +27,12 @@ import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
-  Animated,
   Dimensions,
-  FlatList,
-  Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -44,7 +40,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -81,9 +77,17 @@ export default function BusinessesScreen() {
 
   const [expandedCardId, setExpandedCardId] = useState<number | null>(null);
 
+  // ═══ Modal visibility states ═══
   const [businessModalVisible, setBusinessModalVisible] = useState(false);
   const [ownerModalVisible, setOwnerModalVisible] = useState(false);
   const [typeModalVisible, setTypeModalVisible] = useState(false);
+
+  // ═══ Picker visibility states ═══
+  const [typePickerVisible, setTypePickerVisible] = useState(false);
+  const [ownerPickerVisible, setOwnerPickerVisible] = useState(false);
+  const [typePickerSearch, setTypePickerSearch] = useState("");
+  const [ownerPickerSearch, setOwnerPickerSearch] = useState("");
+
   const [editingBusiness, setEditingBusiness] = useState<Business | null>(null);
   const [editingOwner, setEditingOwner] = useState<BusinessOwner | null>(null);
   const [editingType, setEditingType] = useState<BusinessType | null>(null);
@@ -96,14 +100,6 @@ export default function BusinessesScreen() {
   const [businessPhone, setBusinessPhone] = useState("");
   const [businessEmail, setBusinessEmail] = useState("");
   const [isActive, setIsActive] = useState(true);
-
-  // ─── NEW: Dropdown picker states ──────────────────────────
-  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
-  const [showOwnerDropdown, setShowOwnerDropdown] = useState(false);
-  const [typeDropdownSearch, setTypeDropdownSearch] = useState("");
-  const [ownerDropdownSearch, setOwnerDropdownSearch] = useState("");
-  const typeDropdownAnim = useRef(new Animated.Value(0)).current;
-  const ownerDropdownAnim = useRef(new Animated.Value(0)).current;
 
   const [selectedTypeName, setSelectedTypeName] = useState("");
   const [selectedOwner, setSelectedOwner] = useState<BusinessOwner | null>(null);
@@ -126,7 +122,7 @@ export default function BusinessesScreen() {
 
   useEffect(() => { loadAllData(); }, []);
 
-  const onChange = (event, selectedDate) => {
+  const onChange = (event: any, selectedDate?: Date) => {
     if (Platform.OS === 'android') setShowCalendar(false);
     if (selectedDate) {
       setDate(selectedDate);
@@ -187,91 +183,38 @@ export default function BusinessesScreen() {
     );
   }, [types, typeSearchQuery]);
 
-  // ─── Dropdown filtered data ───────────────────────────────
-  const filteredTypeDropdownData = useMemo(() => {
-    if (!typeDropdownSearch.trim()) return types;
-    const q = typeDropdownSearch.toLowerCase();
+  // ═══ Picker filtered data ═══
+  const filteredTypePickerData = useMemo(() => {
+    if (!typePickerSearch.trim()) return types;
+    const q = typePickerSearch.toLowerCase();
     return types.filter(t =>
       t.name?.toLowerCase().includes(q) ||
       t.description?.toLowerCase().includes(q)
     );
-  }, [types, typeDropdownSearch]);
+  }, [types, typePickerSearch]);
 
-  const filteredOwnerDropdownData = useMemo(() => {
-    if (!ownerDropdownSearch.trim()) return owners;
-    const q = ownerDropdownSearch.toLowerCase();
+  const filteredOwnerPickerData = useMemo(() => {
+    if (!ownerPickerSearch.trim()) return owners;
+    const q = ownerPickerSearch.toLowerCase();
     return owners.filter(o =>
       o.full_name?.toLowerCase().includes(q) ||
       o.national_id?.toLowerCase().includes(q) ||
       o.location?.toLowerCase().includes(q)
     );
-  }, [owners, ownerDropdownSearch]);
-
-  // ─── Dropdown animations ──────────────────────────────────
-  function openTypeDropdown() {
-    setShowTypeDropdown(true);
-    setTypeDropdownSearch("");
-    Animated.spring(typeDropdownAnim, {
-      toValue: 1,
-      friction: 8,
-      tension: 40,
-      useNativeDriver: true,
-    }).start();
-  }
-
-  function closeTypeDropdown() {
-    Animated.timing(typeDropdownAnim, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowTypeDropdown(false);
-      setTypeDropdownSearch("");
-    });
-  }
-
-  function openOwnerDropdown() {
-    setShowOwnerDropdown(true);
-    setOwnerDropdownSearch("");
-    Animated.spring(ownerDropdownAnim, {
-      toValue: 1,
-      friction: 8,
-      tension: 40,
-      useNativeDriver: true,
-    }).start();
-  }
-
-  function closeOwnerDropdown() {
-    Animated.timing(ownerDropdownAnim, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowOwnerDropdown(false);
-      setOwnerDropdownSearch("");
-    });
-  }
+  }, [owners, ownerPickerSearch]);
 
   function selectBusinessType(type: BusinessType) {
     setBusinessTypeId(type.id);
     setSelectedTypeName(type.name);
-    closeTypeDropdown();
-  }
-
-  function clearBusinessType() {
-    setBusinessTypeId(null);
-    setSelectedTypeName("");
+    setTypePickerVisible(false);
+    setTypePickerSearch("");
   }
 
   function selectOwnerForBusiness(owner: BusinessOwner) {
     setOwnerId(owner.id);
     setSelectedOwner(owner);
-    closeOwnerDropdown();
-  }
-
-  function clearSelectedOwner() {
-    setOwnerId(null);
-    setSelectedOwner(null);
+    setOwnerPickerVisible(false);
+    setOwnerPickerSearch("");
   }
 
   function openBusinessModal(business?: Business) {
@@ -294,12 +237,10 @@ export default function BusinessesScreen() {
       setEditingBusiness(null);
       resetBusinessForm();
     }
-    setShowTypeDropdown(false);
-    setShowOwnerDropdown(false);
-    setTypeDropdownSearch("");
-    setOwnerDropdownSearch("");
-    typeDropdownAnim.setValue(0);
-    ownerDropdownAnim.setValue(0);
+    setTypePickerVisible(false);
+    setOwnerPickerVisible(false);
+    setTypePickerSearch("");
+    setOwnerPickerSearch("");
     setBusinessModalVisible(true);
   }
 
@@ -317,12 +258,10 @@ export default function BusinessesScreen() {
 
   function closeBusinessModal() {
     setBusinessModalVisible(false);
-    setShowTypeDropdown(false);
-    setShowOwnerDropdown(false);
-    setTypeDropdownSearch("");
-    setOwnerDropdownSearch("");
-    typeDropdownAnim.setValue(0);
-    ownerDropdownAnim.setValue(0);
+    setTypePickerVisible(false);
+    setOwnerPickerVisible(false);
+    setTypePickerSearch("");
+    setOwnerPickerSearch("");
     setTimeout(() => { resetBusinessForm(); }, 300);
   }
 
@@ -426,144 +365,10 @@ export default function BusinessesScreen() {
   const isOwnerFormValid = ownerName.trim();
   const isTypeFormValid = typeName.trim();
 
-  // ─── Render Functions ───────────────────────────────────
-
-  // ─── Type Dropdown Overlay ────────────────────────────────
-  const renderTypeDropdown = () => {
-    const translateY = typeDropdownAnim.interpolate({
-      inputRange: [0, 1],
-      outputRange: [-20, 0],
-    });
-    const opacity = typeDropdownAnim.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0, 1],
-    });
-
-    return (
-      <Animated.View style={[styles.dropdownOverlay, { opacity, transform: [{ translateY }] }]}>
-        <View style={styles.dropdownSearchWrap}>
-          <Ionicons name="search" size={16} color="#9ca3af" style={styles.dropdownSearchIcon} />
-          <TextInput
-            style={styles.dropdownSearchInput}
-            placeholder="Search types..."
-            placeholderTextColor="#9ca3af"
-            value={typeDropdownSearch}
-            onChangeText={setTypeDropdownSearch}
-            autoCapitalize="none"
-            autoFocus
-          />
-          {typeDropdownSearch.length > 0 && (
-            <TouchableOpacity onPress={() => setTypeDropdownSearch("")}>
-              <Ionicons name="close-circle" size={18} color="#9ca3af" />
-            </TouchableOpacity>
-          )}
-        </View>
-        <View style={styles.dropdownListContainer}>
-          {filteredTypeDropdownData.length === 0 ? (
-            <View style={styles.dropdownEmpty}>
-              <Ionicons name="alert-circle-outline" size={32} color="#d1d5db" />
-              <Text style={styles.dropdownEmptyText}>
-                {typeDropdownSearch.trim() ? "No types match your search" : "No types defined"}
-              </Text>
-            </View>
-          ) : (
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled
-            >
-              {filteredTypeDropdownData.map((type) => (
-                <TouchableOpacity
-                  key={type.id.toString()}
-                  style={[styles.dropdownItem, businessTypeId === type.id && styles.dropdownItemSelected]}
-                  onPress={() => selectBusinessType(type)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.dropdownItemText}>
-                    <Text style={styles.dropdownLabel}>{type.name}</Text>
-                    {type.description && <Text style={styles.dropdownDesc}>{type.description}</Text>}
-                    <Text style={styles.dropdownMeta}>Charge: MKW{type.amount_charge?.toFixed(2) || "0.00"}</Text>
-                  </View>
-                  {businessTypeId === type.id && <Ionicons name="checkmark-circle" size={20} color="#5C8CE8" />}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-        </View>
-      </Animated.View>
-    );
-  };
-
-  // ─── Owner Dropdown Overlay ───────────────────────────────
-  const renderOwnerDropdown = () => {
-    const translateY = ownerDropdownAnim.interpolate({
-      inputRange: [0, 1],
-      outputRange: [-20, 0],
-    });
-    const opacity = ownerDropdownAnim.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0, 1],
-    });
-
-    return (
-      <Animated.View style={[styles.dropdownOverlay, { opacity, transform: [{ translateY }] }]}>
-        <View style={styles.dropdownSearchWrap}>
-          <Ionicons name="search" size={16} color="#9ca3af" style={styles.dropdownSearchIcon} />
-          <TextInput
-            style={styles.dropdownSearchInput}
-            placeholder="Search owners..."
-            placeholderTextColor="#9ca3af"
-            value={ownerDropdownSearch}
-            onChangeText={setOwnerDropdownSearch}
-            autoCapitalize="none"
-            autoFocus
-          />
-          {ownerDropdownSearch.length > 0 && (
-            <TouchableOpacity onPress={() => setOwnerDropdownSearch("")}>
-              <Ionicons name="close-circle" size={18} color="#9ca3af" />
-            </TouchableOpacity>
-          )}
-        </View>
-        <View style={styles.dropdownListContainer}>
-          {filteredOwnerDropdownData.length === 0 ? (
-            <View style={styles.dropdownEmpty}>
-              <Ionicons name="alert-circle-outline" size={32} color="#d1d5db" />
-              <Text style={styles.dropdownEmptyText}>
-                {ownerDropdownSearch.trim() ? "No owners match your search" : "No owners found"}
-              </Text>
-            </View>
-          ) : (
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled
-            >
-              {filteredOwnerDropdownData.map((owner) => (
-                <TouchableOpacity
-                  key={owner.id.toString()}
-                  style={[styles.dropdownItem, ownerId === owner.id && styles.dropdownItemSelected]}
-                  onPress={() => selectOwnerForBusiness(owner)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.dropdownAvatar}>
-                    <Text style={styles.dropdownAvatarText}>{owner.full_name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)}</Text>
-                  </View>
-                  <View style={styles.dropdownItemText}>
-                    <Text style={styles.dropdownLabel}>{owner.full_name}</Text>
-                    {owner.national_id && <Text style={styles.dropdownDesc}>ID: {owner.national_id}</Text>}
-                    {owner.location && <Text style={styles.dropdownMeta}>📍 {owner.location}</Text>}
-                  </View>
-                  {ownerId === owner.id && <Ionicons name="checkmark-circle" size={20} color="#5C8CE8" />}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-        </View>
-      </Animated.View>
-    );
-  };
-
-  const renderBusinessForm = () => (
+  // ═══════════════════════════════════════════════════════════
+  // ═══ BUSINESS FORM CONTENT (for CustomBottomSheet) ═══
+  // ═══════════════════════════════════════════════════════════
+  const renderBusinessFormContent = () => (
     <View>
       <Text style={styles.whiteModalLabel}>BUSINESS NAME *</Text>
       <View style={styles.whiteInputWrap}>
@@ -571,44 +376,38 @@ export default function BusinessesScreen() {
         <TextInput style={styles.whiteInput} placeholder="Enter business name" placeholderTextColor="#999999" value={businessName} onChangeText={setBusinessName} autoCapitalize="words" />
       </View>
 
-      {/* ─── BUSINESS TYPE with Dropdown ─────────────────── */}
+      {/* BUSINESS TYPE — opens picker sheet */}
       <Text style={styles.whiteModalLabel}>BUSINESS TYPE *</Text>
-      <View style={styles.dropdownWrapper}>
-        <TouchableOpacity
-          style={[styles.whiteSelector, selectedTypeName && styles.whiteSelectorFilled, showTypeDropdown && styles.whiteSelectorActive]}
-          onPress={() => {
-            if (showTypeDropdown) closeTypeDropdown();
-            else { closeOwnerDropdown(); openTypeDropdown(); }
-          }}
-          activeOpacity={0.8}
-        >
-          {selectedTypeName ? <Text style={styles.whiteSelectorText}>{selectedTypeName}</Text> : <Text style={styles.whiteSelectorPlaceholder}>Tap to select type...</Text>}
-          <Ionicons name={showTypeDropdown ? "chevron-up" : "chevron-down"} size={18} color="#073474" />
-        </TouchableOpacity>
-        {showTypeDropdown && renderTypeDropdown()}
-      </View>
+      <TouchableOpacity
+        style={[styles.whiteSelector, selectedTypeName && styles.whiteSelectorFilled]}
+        onPress={() => { setTypePickerVisible(true); setOwnerPickerVisible(false); }}
+        activeOpacity={0.8}
+      >
+        {selectedTypeName ? (
+          <Text style={styles.whiteSelectorText}>{selectedTypeName}</Text>
+        ) : (
+          <Text style={styles.whiteSelectorPlaceholder}>Tap to select type...</Text>
+        )}
+        <Ionicons name="chevron-forward" size={18} color="#073474" />
+      </TouchableOpacity>
 
-      {/* ─── BUSINESS OWNER with Dropdown ───────────────── */}
+      {/* BUSINESS OWNER — opens picker sheet */}
       <Text style={styles.whiteModalLabel}>BUSINESS OWNER *</Text>
-      <View style={styles.dropdownWrapper}>
-        <TouchableOpacity
-          style={[styles.whiteSelector, selectedOwner && styles.whiteSelectorFilled, showOwnerDropdown && styles.whiteSelectorActive]}
-          onPress={() => {
-            if (showOwnerDropdown) closeOwnerDropdown();
-            else { closeTypeDropdown(); openOwnerDropdown(); }
-          }}
-          activeOpacity={0.8}
-        >
-          {selectedOwner ? (
-            <View style={styles.selectedOwnerDisplay}>
-              <Text style={styles.whiteSelectorText}>{selectedOwner.full_name}</Text>
-              {selectedOwner.national_id && <Text style={styles.selectedOwnerSub}>({selectedOwner.national_id})</Text>}
-            </View>
-          ) : <Text style={styles.whiteSelectorPlaceholder}>Tap to select owner...</Text>}
-          <Ionicons name={showOwnerDropdown ? "chevron-up" : "chevron-down"} size={18} color="#073474" />
-        </TouchableOpacity>
-        {showOwnerDropdown && renderOwnerDropdown()}
-      </View>
+      <TouchableOpacity
+        style={[styles.whiteSelector, selectedOwner && styles.whiteSelectorFilled]}
+        onPress={() => { setOwnerPickerVisible(true); setTypePickerVisible(false); }}
+        activeOpacity={0.8}
+      >
+        {selectedOwner ? (
+          <View style={styles.selectedOwnerDisplay}>
+            <Text style={styles.whiteSelectorText}>{selectedOwner.full_name}</Text>
+            {selectedOwner.national_id && <Text style={styles.selectedOwnerSub}>({selectedOwner.national_id})</Text>}
+          </View>
+        ) : (
+          <Text style={styles.whiteSelectorPlaceholder}>Tap to select owner...</Text>
+        )}
+        <Ionicons name="chevron-forward" size={18} color="#073474" />
+      </TouchableOpacity>
 
       <Text style={styles.whiteModalLabel}>ADDRESS</Text>
       <View style={styles.whiteInputWrap}>
@@ -637,6 +436,47 @@ export default function BusinessesScreen() {
 
       <View style={{ height: 20 }} />
     </View>
+  );
+
+  // ═══════════════════════════════════════════════════════════
+  // ═══ TYPE PICKER RENDER ITEM ═══
+  // ═══════════════════════════════════════════════════════════
+  const renderTypePickerItem = ({ item: type }: { item: BusinessType }) => (
+    <TouchableOpacity
+      style={[styles.pickerItem, businessTypeId === type.id && styles.pickerItemSelected]}
+      onPress={() => selectBusinessType(type)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.pickerItemText}>
+        <Text style={styles.pickerLabel}>{type.name}</Text>
+        {type.description && <Text style={styles.pickerDesc}>{type.description}</Text>}
+        <Text style={styles.pickerMeta}>Charge: MKW{type.amount_charge?.toFixed(2) || "0.00"}</Text>
+      </View>
+      {businessTypeId === type.id && <Ionicons name="checkmark-circle" size={22} color="#5C8CE8" />}
+    </TouchableOpacity>
+  );
+
+  // ═══════════════════════════════════════════════════════════
+  // ═══ OWNER PICKER RENDER ITEM ═══
+  // ═══════════════════════════════════════════════════════════
+  const renderOwnerPickerItem = ({ item: owner }: { item: BusinessOwner }) => (
+    <TouchableOpacity
+      style={[styles.pickerItem, ownerId === owner.id && styles.pickerItemSelected]}
+      onPress={() => selectOwnerForBusiness(owner)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.pickerAvatar}>
+        <Text style={styles.pickerAvatarText}>
+          {owner.full_name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)}
+        </Text>
+      </View>
+      <View style={styles.pickerItemText}>
+        <Text style={styles.pickerLabel}>{owner.full_name}</Text>
+        {owner.national_id && <Text style={styles.pickerDesc}>ID: {owner.national_id}</Text>}
+        {owner.location && <Text style={styles.pickerMeta}>{owner.location}</Text>}
+      </View>
+      {ownerId === owner.id && <Ionicons name="checkmark-circle" size={22} color="#5C8CE8" />}
+    </TouchableOpacity>
   );
 
   const renderOwnerForm = () => (
@@ -861,55 +701,105 @@ export default function BusinessesScreen() {
         )}
       </ScrollView>
 
-      {/* ═══ Business Modal with Inline Dropdowns ═══ */}
-      <Modal visible={businessModalVisible} animationType="slide" transparent onRequestClose={closeBusinessModal}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.whiteModalOverlay}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
-        >
-          <Pressable style={styles.whiteModalBackdrop} onPress={() => {
-            closeTypeDropdown();
-            closeOwnerDropdown();
-            Keyboard.dismiss();
-          }} />
-          <View style={styles.whiteModalCard}>
-            <View style={styles.whiteModalHeader}>
-              <Text style={styles.whiteModalTitle}>{editingBusiness ? "Edit Business" : "Add Business"}</Text>
-              <TouchableOpacity onPress={closeBusinessModal} style={styles.whiteModalClose}>
-                <Ionicons name="close" size={22} color="#666666" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="interactive"
-              automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
-              contentContainerStyle={styles.whiteModalScrollContent}
-            >
-              {renderBusinessForm()}
-            </ScrollView>
-            <View style={styles.whiteModalActions}>
-              <TouchableOpacity style={styles.whiteCancelBtn} onPress={closeBusinessModal} activeOpacity={0.7}>
-                <Text style={styles.whiteCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.whiteSaveBtn, !isBusinessFormValid && styles.whiteSaveBtnDisabled]}
-                onPress={handleSaveBusiness}
-                disabled={!isBusinessFormValid}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.whiteSaveText}>{editingBusiness ? "Update Business" : "Create Business"}</Text>
-                <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      {/* ═══ BUSINESS MODAL — CustomBottomSheet (no ScrollView nesting) ═══ */}
+      <CustomBottomSheet
+        visible={businessModalVisible}
+        onClose={closeBusinessModal}
+        title={editingBusiness ? "Edit Business" : "Add Business"}
+        actions={
+          <SheetActionButtons
+            onCancel={closeBusinessModal}
+            onSave={handleSaveBusiness}
+            cancelText="Cancel"
+            saveText={editingBusiness ? "Update Business" : "Create Business"}
+            saveIcon="checkmark-circle"
+            disabled={!isBusinessFormValid}
+          />
+        }
+        backdropOpacity={0.45}
+      >
+        {renderBusinessFormContent()}
+      </CustomBottomSheet>
 
-      {/* Owner Modal */}
+      {/* ═══ TYPE PICKER — Separate CustomBottomSheet with FlatList ═══ */}
+      <CustomBottomSheet
+        visible={typePickerVisible}
+        onClose={() => { setTypePickerVisible(false); setTypePickerSearch(""); }}
+        title="Select Business Type"
+        listData={filteredTypePickerData}
+        renderItem={renderTypePickerItem}
+        keyExtractor={(item: BusinessType) => item.id.toString()}
+        listEmptyComponent={
+          <View style={styles.pickerEmpty}>
+            <Ionicons name="alert-circle-outline" size={32} color="#d1d5db" />
+            <Text style={styles.pickerEmptyText}>
+              {typePickerSearch.trim() ? "No types match your search" : "No types defined"}
+            </Text>
+          </View>
+        }
+        backdropOpacity={0.45}
+      >
+        {/* Search bar as header content */}
+        <View style={styles.pickerSearchWrap}>
+          <Ionicons name="search" size={16} color="#9ca3af" style={{ marginRight: 10 }} />
+          <TextInput
+            style={styles.pickerSearchInput}
+            placeholder="Search types..."
+            placeholderTextColor="#9ca3af"
+            value={typePickerSearch}
+            onChangeText={setTypePickerSearch}
+            autoCapitalize="none"
+            autoFocus
+          />
+          {typePickerSearch.length > 0 && (
+            <TouchableOpacity onPress={() => setTypePickerSearch("")}>
+              <Ionicons name="close-circle" size={18} color="#9ca3af" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </CustomBottomSheet>
+
+      {/* ═══ OWNER PICKER — Separate CustomBottomSheet with FlatList ═══ */}
+      <CustomBottomSheet
+        visible={ownerPickerVisible}
+        onClose={() => { setOwnerPickerVisible(false); setOwnerPickerSearch(""); }}
+        title="Select Business Owner"
+        listData={filteredOwnerPickerData}
+        renderItem={renderOwnerPickerItem}
+        keyExtractor={(item: BusinessOwner) => item.id.toString()}
+        listEmptyComponent={
+          <View style={styles.pickerEmpty}>
+            <Ionicons name="alert-circle-outline" size={32} color="#d1d5db" />
+            <Text style={styles.pickerEmptyText}>
+              {ownerPickerSearch.trim() ? "No owners match your search" : "No owners found"}
+            </Text>
+          </View>
+        }
+        backdropOpacity={0.45}
+      >
+        {/* Search bar as header content */}
+        <View style={styles.pickerSearchWrap}>
+          <Ionicons name="search" size={16} color="#9ca3af" style={{ marginRight: 10 }} />
+          <TextInput
+            style={styles.pickerSearchInput}
+            placeholder="Search owners..."
+            placeholderTextColor="#9ca3af"
+            value={ownerPickerSearch}
+            onChangeText={setOwnerPickerSearch}
+            autoCapitalize="none"
+            autoFocus
+          />
+          {ownerPickerSearch.length > 0 && (
+            <TouchableOpacity onPress={() => setOwnerPickerSearch("")}>
+              <Ionicons name="close-circle" size={18} color="#9ca3af" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </CustomBottomSheet>
+
+      {/* Owner Modal — kept as raw Modal since no FlatList inside */}
       <Modal visible={ownerModalVisible} animationType="slide" transparent onRequestClose={closeOwnerModal}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.whiteModalOverlay}>
+        <View style={styles.whiteModalOverlay}>
           <TouchableOpacity style={styles.whiteModalBackdrop} onPress={closeOwnerModal} activeOpacity={1} />
           <View style={styles.whiteModalCard}>
             <View style={styles.whiteModalHeader}>
@@ -924,16 +814,15 @@ export default function BusinessesScreen() {
               {showCalendar && <DateTimePicker value={date} mode="date" display={Platform.OS === 'ios' ? 'spinner' : 'calendar'} onChange={onChange} maximumDate={new Date()} />}
               <TouchableOpacity style={[styles.whiteSaveBtn, !isOwnerFormValid && styles.whiteSaveBtnDisabled]} onPress={handleSaveOwner} disabled={!isOwnerFormValid} activeOpacity={0.8}>
                 <Text style={styles.whiteSaveText}>{editingOwner ? "Update Owner" : "Add Owner"}</Text>
-                <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
-      {/* Type Modal */}
+      {/* Type Modal — kept as raw Modal since no FlatList inside */}
       <Modal visible={typeModalVisible} animationType="slide" transparent onRequestClose={closeTypeModal}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.whiteModalOverlay}>
+        <View style={styles.whiteModalOverlay}>
           <TouchableOpacity style={styles.whiteModalBackdrop} onPress={closeTypeModal} activeOpacity={1} />
           <View style={styles.whiteModalCard}>
             <View style={styles.whiteModalHeader}>
@@ -947,11 +836,10 @@ export default function BusinessesScreen() {
               <TouchableOpacity style={styles.whiteCancelBtn} onPress={closeTypeModal} activeOpacity={0.7}><Text style={styles.whiteCancelText}>Cancel</Text></TouchableOpacity>
               <TouchableOpacity style={[styles.whiteSaveBtn, !isTypeFormValid && styles.whiteSaveBtnDisabled]} onPress={handleSaveType} disabled={!isTypeFormValid} activeOpacity={0.8}>
                 <Text style={styles.whiteSaveText}>{editingType ? "Update Type" : "Add Type"}</Text>
-                <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </LinearGradient>
   );
@@ -992,21 +880,20 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: "center", paddingVertical: 60 },
   emptyText: { color: "rgba(255,255,255,0.35)", fontSize: 14, fontWeight: "500", marginTop: 16 },
 
-  // White Modal
+  // White Modal (kept for Owner/Type modals)
   whiteModalOverlay: { flex: 1, justifyContent: "flex-end" },
-  whiteModalBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)" },
-  whiteModalCard: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingTop: 24, paddingBottom: Platform.OS === "ios" ? 34 : 24, maxHeight: "90%", marginBottom: Platform.OS === "ios" ? 30 : 45 },
+  whiteModalBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0, 0, 0, 0.01)" },
+  whiteModalCard: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: 24, borderBottomRightRadius: 24, paddingHorizontal: 24, paddingTop: 24, paddingBottom: Platform.OS === "ios" ? 34 : 24, maxHeight: "90%", marginBottom: Platform.OS === "ios" ? 30 : 45, zIndex: 1000 },
   whiteModalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
   whiteModalTitle: { color: "#073474", fontSize: 20, fontWeight: "900", letterSpacing: 0.3 },
   whiteModalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: "#f3f4f6", justifyContent: "center", alignItems: "center" },
-  whiteModalScrollContent: { paddingBottom: 10 },
+  whiteModalScrollContent: { paddingBottom: 10, marginBottom: Platform.OS === "ios" ? 20 : 0 },
   whiteModalLabel: { color: "#6b7280", fontSize: 10, fontWeight: "800", letterSpacing: 1.2, marginBottom: 8, marginLeft: 2, textTransform: "uppercase" },
   whiteInputWrap: { flexDirection: "row", alignItems: "center", backgroundColor: "#f9fafb", borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 12, paddingHorizontal: 12, height: 48, marginBottom: 14 },
   whiteInputIcon: { marginRight: 10 },
   whiteInput: { flex: 1, color: "#111827", fontSize: 15, fontWeight: "600" },
-  whiteSelector: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#f9fafb", borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 12, paddingHorizontal: 12, height: 48, marginBottom: 4 },
+  whiteSelector: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#f9fafb", borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 12, paddingHorizontal: 12, height: 48, marginBottom: 14 },
   whiteSelectorFilled: { borderColor: "#5C8CE8", backgroundColor: "rgba(92, 140, 232, 0.05)" },
-  whiteSelectorActive: { borderColor: "#5C8CE8", borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   whiteSelectorText: { color: "#111827", fontSize: 15, fontWeight: "700" },
   whiteSelectorPlaceholder: { color: "#9ca3af", fontSize: 15, fontWeight: "500" },
   selectedOwnerDisplay: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -1016,94 +903,66 @@ const styles = StyleSheet.create({
   whiteCancelBtn: { flex: 1, height: 52, borderRadius: 14, backgroundColor: "#f3f4f6", justifyContent: "center", alignItems: "center" },
   whiteCancelText: { color: "#6b7280", fontSize: 15, fontWeight: "700" },
   whiteSaveBtn: { flex: 1.5, height: 52, borderRadius: 14, backgroundColor: "#073474", justifyContent: "center", alignItems: "center", flexDirection: "row", gap: 8 },
-  whiteSaveBtnDisabled: { backgroundColor: "#d1d5db" },
+  whiteSaveBtnDisabled: { backgroundColor: "#073474" },
   whiteSaveText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" },
 
-  // ─── NEW: Dropdown Styles ───────────────────────────────
-  dropdownWrapper: {
-    position: "relative",
-    zIndex: 10,
-    marginBottom: 14,
-  },
-  dropdownOverlay: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderTopWidth: 0,
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-    maxHeight: 280,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  dropdownSearchWrap: {
+  // Picker styles
+  pickerSearchWrap: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#f9fafb",
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "#e5e7eb",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    height: 40,
-    marginTop: 8,
-    marginBottom: 8,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 48,
+    marginBottom: 12,
   },
-  dropdownSearchIcon: { marginRight: 8 },
-  dropdownSearchInput: {
+  pickerSearchInput: {
     flex: 1,
     color: "#111827",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "600",
   },
-  dropdownItem: {
+  pickerItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     borderBottomWidth: 1,
     borderBottomColor: "#f3f4f6",
+    backgroundColor: "#FFFFFF",
   },
-  dropdownItemSelected: {
+  pickerItemSelected: {
     backgroundColor: "rgba(92, 140, 232, 0.08)",
-    borderRadius: 10,
     borderBottomWidth: 0,
-    marginBottom: 2,
   },
-  dropdownAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+  pickerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     backgroundColor: "#f3f4f6",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 12,
+    marginRight: 14,
   },
-  dropdownAvatarText: {
+  pickerAvatarText: {
     color: "#073474",
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
   },
-  dropdownItemText: { flex: 1 },
-  dropdownLabel: { color: "#111827", fontSize: 14, fontWeight: "700" },
-  dropdownDesc: { color: "#9ca3af", fontSize: 12, fontWeight: "500", marginTop: 1 },
-  dropdownMeta: { color: "#6b7280", fontSize: 11, fontWeight: "500", marginTop: 1 },
-  dropdownEmpty: {
+  pickerItemText: { flex: 1 },
+  pickerLabel: { color: "#111827", fontSize: 15, fontWeight: "700" },
+  pickerDesc: { color: "#9ca3af", fontSize: 13, fontWeight: "500", marginTop: 2 },
+  pickerMeta: { color: "#6b7280", fontSize: 12, fontWeight: "500", marginTop: 2 },
+  pickerEmpty: {
     alignItems: "center",
-    paddingVertical: 30,
-    gap: 6,
+    paddingVertical: 40,
+    gap: 8,
   },
-  dropdownEmptyText: {
+  pickerEmptyText: {
     color: "#9ca3af",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "600",
-  },
-  dropdownListContainer: {
-    maxHeight: 220,
-    overflow: "hidden",
   },
 });

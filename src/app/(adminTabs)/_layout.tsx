@@ -19,7 +19,7 @@ export default function TabLayout() {
           left: 20,
           right: 20,
           height: 80,
-          borderRadius: 40,
+          borderRadius: 20,
           overflow: "hidden",
         }}
       >
@@ -43,8 +43,8 @@ export default function TabLayout() {
             left: 20,
             right: 20,
             height: 80,
-            borderRadius: 40,
-            backgroundColor: "rgba(255,255,255,0.08)",
+            borderRadius: 20,
+            backgroundColor: "rgba(21, 63, 179, 0.94)",
             borderTopWidth: 0,
             overflow: "hidden",
           },

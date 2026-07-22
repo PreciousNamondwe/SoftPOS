@@ -1,5 +1,5 @@
 // ============================================================
-// components/CustomBottomSheet.tsx — FlatList-based, no ScrollView nesting
+// components/CustomBottomSheet.tsx — Full-screen, above tab bar
 // ============================================================
 
 import { Ionicons } from "@expo/vector-icons";
@@ -11,6 +11,7 @@ import {
     Keyboard,
     KeyboardEvent,
     ListRenderItem,
+    Modal,
     Platform,
     Pressable,
     StyleSheet,
@@ -21,6 +22,11 @@ import {
 } from "react-native";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+/** Tab bar metrics from your layout */
+const TAB_BAR_BOTTOM = 0;
+const TAB_BAR_HEIGHT = 20;
+const TAB_BAR_TOTAL = TAB_BAR_BOTTOM + TAB_BAR_HEIGHT + 16; // +16 padding gap
 
 interface CustomBottomSheetProps<T = any> {
     visible: boolean;
@@ -139,71 +145,79 @@ export default function CustomBottomSheet<T = any>({
     if (!visible && !isVisibleRef.current) return null;
 
     const topMargin = 60;
-    const bottomSafe = Platform.OS === "ios" ? 20 : 0;
+    const bottomSafe = TAB_BAR_TOTAL; // <-- KEY: push above tab bar
     const cardHeight = SCREEN_HEIGHT - topMargin - bottomSafe - (Platform.OS === "ios" ? keyboardHeight : 0);
 
     return (
-        <View style={[StyleSheet.absoluteFill, styles.wrapper]} pointerEvents={visible ? "auto" : "none"}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={handleBackdropPress}>
-                <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: backdropAnim }]} />
-            </Pressable>
+        <Modal
+            visible={visible}
+            animationType="none"
+            transparent
+            onRequestClose={handleClose}
+            statusBarTranslucent
+        >
+            <View style={[StyleSheet.absoluteFill, styles.wrapper]} pointerEvents={visible ? "auto" : "none"}>
+                <Pressable style={StyleSheet.absoluteFill} onPress={handleBackdropPress}>
+                    <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: backdropAnim }]} />
+                </Pressable>
 
-            <Animated.View
-                style={[
-                    styles.card,
-                    cardStyle,
-                    { transform: [{ translateY }], maxHeight: cardHeight, marginTop: topMargin },
-                ]}
-            >
-                <View style={styles.dragHandleContainer}>
-                    <View style={styles.dragHandle} />
-                </View>
-
-                <View style={[styles.header, headerStyle]}>
-                    <Text style={styles.title} numberOfLines={1}>{title}</Text>
-                    {showCloseButton && (
-                        <TouchableOpacity style={styles.closeBtn} onPress={handleClose} activeOpacity={0.7}>
-                            <Ionicons name="close" size={20} color="#666666" />
-                        </TouchableOpacity>
-                    )}
-                </View>
-
-                {listData && renderItem ? (
-                    <FlatList
-                        ref={flatListRef}
-                        data={listData}
-                        renderItem={renderItem}
-                        keyExtractor={keyExtractor}
-                        ListHeaderComponent={<View>{children}</View>}
-                        ListEmptyComponent={listEmptyComponent}
-                        showsVerticalScrollIndicator={false}
-                        keyboardShouldPersistTaps="handled"
-                        keyboardDismissMode="interactive"
-                        automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
-                        contentContainerStyle={styles.scrollContent}
-                    />
-                ) : (
-                    <FlatList
-                        ref={flatListRef}
-                        data={[]}
-                        renderItem={() => null}
-                        ListHeaderComponent={<View>{children}</View>}
-                        showsVerticalScrollIndicator={false}
-                        keyboardShouldPersistTaps="handled"
-                        keyboardDismissMode="interactive"
-                        automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
-                        contentContainerStyle={styles.scrollContent}
-                    />
-                )}
-
-                {actions && (
-                    <View style={styles.actionsWrapper}>
-                        <View style={styles.actionsDivider} />
-                        {actions}
+                <Animated.View
+                    style={[
+                        styles.card,
+                        cardStyle,
+                        { transform: [{ translateY }], maxHeight: cardHeight, marginTop: topMargin, marginBottom: bottomSafe },
+                    ]}
+                >
+                    <View style={styles.dragHandleContainer}>
+                        <View style={styles.dragHandle} />
                     </View>
-                )}
-            </Animated.View>
-        </View>
+
+                    <View style={[styles.header, headerStyle]}>
+                        <Text style={styles.title} numberOfLines={1}>{title}</Text>
+                        {showCloseButton && (
+                            <TouchableOpacity style={styles.closeBtn} onPress={handleClose} activeOpacity={0.7}>
+                                <Ionicons name="close" size={20} color="#666666" />
+                            </TouchableOpacity>
+                        )}
+                    </View>
+
+                    {listData && renderItem ? (
+                        <FlatList
+                            ref={flatListRef}
+                            data={listData}
+                            renderItem={renderItem}
+                            keyExtractor={keyExtractor}
+                            ListHeaderComponent={<View>{children}</View>}
+                            ListEmptyComponent={listEmptyComponent}
+                            showsVerticalScrollIndicator={false}
+                            keyboardShouldPersistTaps="handled"
+                            keyboardDismissMode="interactive"
+                            automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+                            contentContainerStyle={styles.scrollContent}
+                        />
+                    ) : (
+                        <FlatList
+                            ref={flatListRef}
+                            data={[]}
+                            renderItem={() => null}
+                            ListHeaderComponent={<View>{children}</View>}
+                            showsVerticalScrollIndicator={false}
+                            keyboardShouldPersistTaps="handled"
+                            keyboardDismissMode="interactive"
+                            automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+                            contentContainerStyle={styles.scrollContent}
+                        />
+                    )}
+
+                    {actions && (
+                        <View style={styles.actionsWrapper}>
+                            <View style={styles.actionsDivider} />
+                            {actions}
+                        </View>
+                    )}
+                </Animated.View>
+            </View>
+        </Modal>
     );
 }
 
@@ -243,7 +257,6 @@ export function SheetActionButtons({
                 ) : (
                     <View style={actionStyles.row}>
                         <Text style={actionStyles.saveText}>{saveText}</Text>
-                        <Ionicons name={saveIcon as any} size={16} color="#FFFFFF" />
                     </View>
                 )}
             </TouchableOpacity>
@@ -254,9 +267,9 @@ export function SheetActionButtons({
 const actionStyles = StyleSheet.create({
     row: { flexDirection: "row", alignItems: "center", gap: 8 },
     cancelBtn: { flex: 1, height: 52, borderRadius: 14, backgroundColor: "#f3f4f6", justifyContent: "center", alignItems: "center" },
-    cancelText: { color: "#6b7280", fontSize: 15, fontWeight: "700" },
+    cancelText: { color: "#073474", fontSize: 15, fontWeight: "700" },
     saveBtn: { flex: 1.5, height: 52, borderRadius: 14, backgroundColor: "#073474", justifyContent: "center", alignItems: "center", flexDirection: "row", gap: 8 },
-    saveBtnDisabled: { backgroundColor: "#d1d5db" },
+    saveBtnDisabled: { backgroundColor: "#073474" },
     saveText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" },
     spinner: { width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: "#FFFFFF", borderTopColor: "transparent" },
 });
@@ -264,13 +277,27 @@ const actionStyles = StyleSheet.create({
 const styles = StyleSheet.create({
     wrapper: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, elevation: 99999 },
     backdrop: { backgroundColor: "#000000" },
-    card: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 24, paddingTop: 8, paddingBottom: Platform.OS === "ios" ? 24 : 16, shadowColor: "#000", shadowOffset: { width: 0, height: -10 }, shadowOpacity: 0.2, shadowRadius: 24, elevation: 25 },
+    card: {
+        backgroundColor: "#FFFFFF",
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        borderBottomLeftRadius: 28,
+        borderBottomRightRadius: 28,
+        paddingHorizontal: 24,
+        paddingTop: 8,
+        paddingBottom: Platform.OS === "ios" ? 24 : 16,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: -10 },
+        shadowOpacity: 0.2,
+        shadowRadius: 24,
+        elevation: 25,
+    },
     dragHandleContainer: { alignItems: "center", paddingVertical: 8 },
     dragHandle: { width: 40, height: 5, borderRadius: 3, backgroundColor: "#d1d5db" },
     header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20, paddingTop: 4 },
     title: { color: "#073474", fontSize: 20, fontWeight: "900", letterSpacing: 0.3, flex: 1, marginRight: 12 },
     closeBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: "#f3f4f6", justifyContent: "center", alignItems: "center" },
     scrollContent: { paddingBottom: 8 },
-    actionsWrapper: { paddingTop: 0, backgroundColor: "#FFFFFF" },
+    actionsWrapper: { paddingTop: 0, backgroundColor: "#FFFFFF", zIndex: 1000 },
     actionsDivider: { height: 1, backgroundColor: "#f3f4f6", marginVertical: 8 },
 });

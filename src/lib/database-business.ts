@@ -101,27 +101,6 @@ export function initializeBusinessTables() {
       FOREIGN KEY (owner_id) REFERENCES business_owners(id)
     );
   `);
-
-  // Insert default business types if empty
-  const count = db.getFirstSync<{ count: number }>(
-    "SELECT COUNT(*) as count FROM business_types WHERE is_deleted = 0;"
-  );
-  if (!count || count.count === 0) {
-    const defaults = [
-      { name: "Retail Shop", description: "General retail store", amount_charge: 50 },
-      { name: "Restaurant", description: "Food and beverage service", amount_charge: 100 },
-      { name: "Pharmacy", description: "Medical and drug store", amount_charge: 150 },
-      { name: "Supermarket", description: "Large grocery store", amount_charge: 200 },
-      { name: "Wholesale", description: "Bulk goods distributor", amount_charge: 250 },
-      { name: "Service Provider", description: "General service business", amount_charge: 75 },
-    ];
-    for (const type of defaults) {
-      db.runSync(
-        "INSERT INTO business_types (name, description, amount_charge, is_deleted, is_synced) VALUES (?, ?, ?, 0, 0);",
-        [type.name, type.description, type.amount_charge]
-      );
-    }
-  }
 }
 
 // ─── Migration: Add is_deleted if upgrading ─────────────────

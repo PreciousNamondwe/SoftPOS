@@ -22,7 +22,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Alert,
     FlatList,
@@ -50,6 +50,7 @@ export default function AddUserScreen() {
     const [pin, setPin] = useState("");
     const [selectedRole, setSelectedRole] = useState<Role | null>(null);
     const [showRolePicker, setShowRolePicker] = useState(false);
+    const [rolePickerSearch, setRolePickerSearch] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     function loadData() {
@@ -81,6 +82,7 @@ export default function AddUserScreen() {
         setPin("");
         setSelectedRole(null);
         setShowRolePicker(false);
+        setRolePickerSearch("");
         setIsSubmitting(false);
         setModalVisible(true);
     }
@@ -93,6 +95,7 @@ export default function AddUserScreen() {
             setPin("");
             setSelectedRole(null);
             setShowRolePicker(false);
+            setRolePickerSearch("");
             setIsSubmitting(false);
         }, 350);
     }
@@ -183,7 +186,9 @@ export default function AddUserScreen() {
     function handleDeleteUser(targetUser: UserWithRole) {
         Alert.alert(
             "Delete User",
-            `Delete "${targetUser.full_name}" (${targetUser.user_id})?\n\nThis will soft-delete the user and their sessions. They can be restored later.`,
+            `Delete "${targetUser.full_name}" (${targetUser.user_id})?
+
+This will soft-delete the user and their sessions. They can be restored later.`,
             [
                 { text: "Cancel", style: "cancel" },
                 {
@@ -213,6 +218,16 @@ export default function AddUserScreen() {
     function getRoleLabel(roleKey: string): string {
         return getRoleByKey(roleKey)?.role_label || roleKey;
     }
+
+    // ═══ Filtered roles for picker search ═══
+    const filteredRolePickerData = useMemo(() => {
+        if (!rolePickerSearch.trim()) return roles;
+        const q = rolePickerSearch.toLowerCase();
+        return roles.filter(r =>
+            r.role_label?.toLowerCase().includes(q) ||
+            r.role_key?.toLowerCase().includes(q)
+        );
+    }, [roles, rolePickerSearch]);
 
     const renderUserItem = ({ item }: { item: UserWithRole }) => {
         const roleColor = getRoleColor(item.role);
@@ -264,52 +279,29 @@ export default function AddUserScreen() {
         />
     );
 
-    // ─── Role Picker Render ─────────────────────────────────
-    const renderRolePicker = () => (
-        <View style={styles.rolePickerOverlay}>
-            <View style={styles.rolePickerHeader}>
-                <TouchableOpacity onPress={() => setShowRolePicker(false)} style={styles.rolePickerBackBtn}>
-                    <Ionicons name="arrow-back" size={22} color="#073474" />
-                </TouchableOpacity>
-                <Text style={styles.rolePickerTitle}>Select Role</Text>
-                <View style={{ width: 40 }} />
+    // ─── Role Picker Render Item ────────────────────────────
+    const renderRolePickerItem = ({ item: role }: { item: Role }) => (
+        <TouchableOpacity
+            style={[
+                styles.rolePickerItem,
+                selectedRole?.id === role.id && styles.rolePickerItemSelected,
+            ]}
+            onPress={() => {
+                setSelectedRole(role);
+                setShowRolePicker(false);
+                setRolePickerSearch("");
+            }}
+            activeOpacity={0.7}
+        >
+            <View style={[styles.rolePickerDot, { backgroundColor: role.color }]} />
+            <View style={styles.rolePickerItemText}>
+                <Text style={styles.rolePickerLabel}>{role.role_label}</Text>
+                <Text style={styles.rolePickerKey}>{role.role_key}</Text>
             </View>
-            <FlatList
-                data={roles}
-                keyExtractor={(item) => item.id.toString()}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 20 }}
-                ListEmptyComponent={
-                    <View style={styles.rolePickerEmpty}>
-                        <Ionicons name="alert-circle-outline" size={40} color="#d1d5db" />
-                        <Text style={styles.rolePickerEmptyText}>No roles defined</Text>
-                        <Text style={styles.rolePickerEmptySub}>Go to Roles tab first</Text>
-                    </View>
-                }
-                renderItem={({ item: role }) => (
-                    <TouchableOpacity
-                        style={[
-                            styles.rolePickerItem,
-                            selectedRole?.id === role.id && styles.rolePickerItemSelected,
-                        ]}
-                        onPress={() => {
-                            setSelectedRole(role);
-                            setShowRolePicker(false);
-                        }}
-                        activeOpacity={0.7}
-                    >
-                        <View style={[styles.rolePickerDot, { backgroundColor: role.color }]} />
-                        <View style={styles.rolePickerItemText}>
-                            <Text style={styles.rolePickerLabel}>{role.role_label}</Text>
-                            <Text style={styles.rolePickerKey}>{role.role_key}</Text>
-                        </View>
-                        {selectedRole?.id === role.id && (
-                            <Ionicons name="checkmark-circle" size={22} color="#5C8CE8" />
-                        )}
-                    </TouchableOpacity>
-                )}
-            />
-        </View>
+            {selectedRole?.id === role.id && (
+                <Ionicons name="checkmark-circle" size={22} color="#5C8CE8" />
+            )}
+        </TouchableOpacity>
     );
 
     // ─── Form Render ────────────────────────────────────────
@@ -457,16 +449,55 @@ export default function AddUserScreen() {
                 />
             </View>
 
-            {/* ═══ CUSTOM BOTTOM SHEET ═══ */}
+            {/* ═══ MAIN FORM BOTTOM SHEET ═══ */}
             <CustomBottomSheet
-                visible={modalVisible}
+                visible={modalVisible && !showRolePicker}
                 onClose={closeModal}
-                title={showRolePicker ? "" : "Add New User"}
-                actions={showRolePicker ? undefined : modalActions}
+                title="Add New User"
+                actions={modalActions}
                 backdropOpacity={0.45}
                 disableBackdropClose={isSubmitting}
             >
-                {showRolePicker ? renderRolePicker() : renderForm()}
+                {renderForm()}
+            </CustomBottomSheet>
+
+            {/* ═══ ROLE PICKER BOTTOM SHEET (separate, with search + FlatList) ═══ */}
+            <CustomBottomSheet
+                visible={showRolePicker}
+                onClose={() => { setShowRolePicker(false); setRolePickerSearch(""); }}
+                title="Select Role"
+                listData={filteredRolePickerData}
+                renderItem={renderRolePickerItem}
+                keyExtractor={(item: Role) => item.id.toString()}
+                listEmptyComponent={
+                    <View style={styles.rolePickerEmpty}>
+                        <Ionicons name="alert-circle-outline" size={40} color="#d1d5db" />
+                        <Text style={styles.rolePickerEmptyText}>
+                            {rolePickerSearch.trim() ? "No roles match your search" : "No roles defined"}
+                        </Text>
+                        {!rolePickerSearch.trim() && <Text style={styles.rolePickerEmptySub}>Go to Roles tab first</Text>}
+                    </View>
+                }
+                backdropOpacity={0.45}
+            >
+                {/* Search bar as header content */}
+                <View style={styles.rolePickerSearchWrap}>
+                    <Ionicons name="search" size={16} color="#9ca3af" style={{ marginRight: 10 }} />
+                    <TextInput
+                        style={styles.rolePickerSearchInput}
+                        placeholder="Search roles..."
+                        placeholderTextColor="#9ca3af"
+                        value={rolePickerSearch}
+                        onChangeText={setRolePickerSearch}
+                        autoCapitalize="none"
+                        autoFocus
+                    />
+                    {rolePickerSearch.length > 0 && (
+                        <TouchableOpacity onPress={() => setRolePickerSearch("")}>
+                            <Ionicons name="close-circle" size={18} color="#9ca3af" />
+                        </TouchableOpacity>
+                    )}
+                </View>
             </CustomBottomSheet>
         </LinearGradient>
     );
@@ -719,31 +750,26 @@ const styles = StyleSheet.create({
         fontWeight: "500",
     },
 
-    // ─── Role Picker Overlay ──────────────────────────────
-    rolePickerOverlay: {
-        flex: 1,
-    },
-    rolePickerHeader: {
+    // ─── Role Picker Search ───────────────────────────────
+    rolePickerSearchWrap: {
         flexDirection: "row",
         alignItems: "center",
-        justifyContent: "space-between",
-        marginBottom: 16,
-        paddingTop: 4,
+        backgroundColor: "#f9fafb",
+        borderWidth: 1.5,
+        borderColor: "#e5e7eb",
+        borderRadius: 14,
+        paddingHorizontal: 14,
+        height: 48,
+        marginBottom: 12,
     },
-    rolePickerBackBtn: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
-        backgroundColor: "#f3f4f6",
-        justifyContent: "center",
-        alignItems: "center",
+    rolePickerSearchInput: {
+        flex: 1,
+        color: "#111827",
+        fontSize: 15,
+        fontWeight: "600",
     },
-    rolePickerTitle: {
-        color: "#073474",
-        fontSize: 18,
-        fontWeight: "900",
-        letterSpacing: 0.3,
-    },
+
+    // ─── Role Picker Items ────────────────────────────────
     rolePickerItem: {
         flexDirection: "row",
         alignItems: "center",
@@ -751,6 +777,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14,
         borderBottomWidth: 1,
         borderBottomColor: "#f3f4f6",
+        backgroundColor: "#FFFFFF",
     },
     rolePickerItemSelected: {
         backgroundColor: "rgba(92, 140, 232, 0.08)",
